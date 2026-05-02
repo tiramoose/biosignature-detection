@@ -1,0 +1,26 @@
+# Synthetic planet population priors
+# All values are toy/uniform for now — Week 3-4 will replace with Kepler/TESS rates
+
+planet:
+  radius_earth:
+    distribution: uniform
+    min: 0.5
+    max: 2.5             # Earth radii — focus on rocky/super-Earth range
+
+  distance_pc:
+    distribution: volume_uniform   # uniform in volume = more planets at larger d
+    min: 1.0
+    max: 50.0            # parsecs
+
+  orbital_period_days:
+    distribution: log_uniform
+    min: 10
+    max: 400             # days — habitable zone range for various star types
+
+star:
+  types: [M, K, G, F]
+  weights: [0.50, 0.25, 0.15, 0.10]   # M dwarfs dominate by number
+
+simulation:
+  n_planets: 1000        # default population size
+  random_seed: 42
