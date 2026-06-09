@@ -1,0 +1,13 @@
+planet_name,star_name,star_type,star_teff_k,star_radius_rs,star_mass_ms,star_magnitude_j,distance_pc,planet_radius_re,planet_mass_me,orbital_period_days,transit_duration_hours,equilibrium_temp_k,tsm_score,hz_position,best_jwst_mode,priority,notes
+TRAPPIST-1e,TRAPPIST-1,M8,2566,0.1192,0.0898,11.35,12.43,0.920,0.772,6.099,0.960,251,9.1,optimistic_hz,NIRSpec_PRISM,1,Best rocky HZ target; multiple transits feasible; Gillon+2017
+TRAPPIST-1f,TRAPPIST-1,M8,2566,0.1192,0.0898,11.35,12.43,1.045,1.039,9.206,1.121,219,8.3,conservative_hz,NIRSpec_PRISM,2,Conservative HZ; slightly cooler than 1e; Gillon+2017
+TRAPPIST-1d,TRAPPIST-1,M8,2566,0.1192,0.0898,11.35,12.43,0.788,0.388,4.050,0.726,288,7.2,inner_hz,NIRSpec_PRISM,3,Inner HZ edge; high irradiation; runaway greenhouse risk
+LHS_1140b,LHS_1140,M4,3216,0.2138,0.1790,9.61,14.99,1.727,6.380,24.737,1.849,235,9.8,conservative_hz,NIRSpec_PRISM,1,Best rocky super-Earth target; high TSM; Dittmann+2017; de Wit+2022
+K2-18b,K2-18,M2.5,3457,0.4445,0.3593,9.76,38.00,2.370,8.630,32.940,2.769,255,93.0,conservative_hz,NIRSpec_PRISM,1,Hycean world candidate; CH4+CO2 detected (Madhusudhan+2023); validation target
+TOI-700d,TOI-700,M2,3480,0.4030,0.4160,10.90,31.10,1.144,1.720,37.424,2.681,268,5.1,conservative_hz,NIRSpec_PRISM,2,Earth-size in conservative HZ; Gilbert+2020; TESS discovery
+GJ_1132b,GJ_1132,M4,3270,0.2040,0.1810,9.24,12.62,1.130,1.660,1.629,0.522,585,8.7,hot_inner,NIRSpec_PRISM,3,Hot rocky; secondary eclipse detectable; atmosphere tentatively detected; Berger+2018
+Proxima_Cen_b,Proxima_Cen,M5.5,2992,0.1542,0.1221,5.36,1.30,1.070,1.270,11.184,0.000,234,0.0,optimistic_hz,NIRSpec_PRISM,2,Does not transit (no confirmed transit); upper limit study only; Anglada-Escude+2016
+TOI-700e,TOI-700,M2,3480,0.4030,0.4160,10.90,31.10,0.953,0.810,28.185,2.318,270,4.2,optimistic_hz,NIRSpec_PRISM,2,Earth-size inner-HZ companion to TOI-700d; Gilbert+2023
+LHS_1140c,LHS_1140,M4,3216,0.2138,0.1790,9.61,14.99,1.282,1.810,3.778,1.127,370,6.4,hot_inner,NIRSpec_PRISM,3,Hot Venus-zone companion; useful false-positive control target
+GJ_3470b,GJ_3470,M1.5,3652,0.5470,0.5080,8.19,29.40,4.200,13.900,3.337,1.820,600,91.0,hot_inner,NIRSpec_G235M,3,Warm sub-Neptune; useful for template grid validation; Bonfils+2012
+TOI-910b,TOI-910,M0,3800,0.5600,0.5700,10.20,40.50,2.030,6.100,18.900,2.240,320,22.0,inner_hz,NIRSpec_G235M,3,Sub-Neptune near inner HZ; less characterized; useful population anchor
