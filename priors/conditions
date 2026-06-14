@@ -1,0 +1,49 @@
+# config/experiment.yaml
+# Experiment configuration for Monte Carlo population analysis
+# Edit this file to change run parameters without touching any code.
+
+experiment_name: exp1
+description: "Pilot MC run — biosignature detectability across synthetic population"
+
+# ── Monte Carlo settings ───────────────────────────────────────────────────
+n_planets: 10000          # Number of synthetic planets to draw
+seed: 2024               # Random seed for reproducibility
+n_jobs: 4                # Parallel workers (set to 1 if multiprocessing causes issues)
+batch_size: 500          # Planets per batch (controls memory usage)
+
+# ── Observation settings ───────────────────────────────────────────────────
+n_transits_list: [5, 10, 20]   # Transit counts to simulate for each planet
+instrument: jwst_nirspec       # Instrument to use (jwst_nirspec | miri_lrs)
+detection_threshold_sigma: 5.0 # Detection significance threshold
+
+# ── Atmosphere sampling ────────────────────────────────────────────────────
+# Probability of each atmosphere type being assigned to a planet
+atmosphere_weights:
+  earth_like:           0.25   # Equal priors — no astrophysical preference assumed
+  high_co2:             0.25
+  reduced_o2_high_ch4:  0.25
+  hycean:               0.25
+
+# ── Population filter (before simulation) ─────────────────────────────────
+max_distance_pc: 50.0
+max_j_magnitude: 14.0          # Only simulate stars bright enough for JWST
+min_transit_duration_hours: 0.3
+
+# ── Output ────────────────────────────────────────────────────────────────
+output_dir: results/exp1
+save_full_table: true          # Save all 10k rows (can be large)
+save_summary_stats: true
+
+# ── Bayesian fiducial case ─────────────────────────────────────────────────
+fiducial:
+  planet_name: "Earth-twin @ 10pc"
+  star_teff_k: 3100.0
+  star_radius_rs: 0.25
+  star_magnitude_j: 10.5
+  planet_radius_re: 1.0
+  orbital_period_days: 12.0
+  transit_duration_hours: 1.4
+  distance_pc: 10.0
+  equilibrium_temp_k: 265.0
+  n_transits: 10
+  n_live_points: 200            # dynesty live points (higher = more accurate)
