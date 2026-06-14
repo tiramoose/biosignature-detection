@@ -1,724 +1,507 @@
-"""
-atmosphere_templates.py
------------------------
-Precomputed atmosphere template grid for transmission spectroscopy.
-
-Implements three canonical atmosphere types:
-  1. earth_like      — O2 + H2O + CO2 + O3 + trace CH4 (biosignature-rich)
-  2. high_co2        — CO2-dominated (Venus-analog; no biosignatures)
-  3. reduced_o2_high_ch4 — Anoxic biosphere (high CH4, low O2; Archean Earth analog)
-
-Methodology note (paper/methods.md):
-  We adopt a precomputed template grid approach, which enables parameter
-  sweeps across cloud fraction, O2/CH4, and scale height that would be
-  computationally infeasible with online radiative transfer codes.
-  Grid parameters: cloud_fraction ∈ [0, 0.9], scale_height ∈ [6, 11] km,
-  O2/CH4 ratio (template-dependent).
-
-Wavelength coverage: 0.6 – 5.3 μm (JWST NIRSpec prism)
-Spectral grid: 300 points, log-spaced
-
-Decision note:
-  petitRADTRANS installation was evaluated; the template grid approach was
-  adopted as the primary method for computational tractability.
-  This is methodologically equivalent for detection-horizon studies.
-
-Usage:
-    from atmosphere_templates import TemplateGrid, get_default_templates
-
-    # Get the three canonical templates (quick start):
-    templates = get_default_templates(star_radius_rs=0.2, planet_radius_re=1.0)
-
-    # Or build a full parameter grid:
-    grid = TemplateGrid()
-    grid.build_grid()
-    grid.save("data/templates/template_grid.json")
-    t = grid.get_template("earth_like", cloud_fraction=0.5, scale_height_km=8.5)
-"""
-
 import numpy as np
 import json
 import os
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
-
-
+from dataclasses import dataclass
+from typing import Dict, Tuple, Optional
+ 
+ 
 # ---------------------------------------------------------------------------
-# Wavelength grid
+# Instrument config dataclass
 # ---------------------------------------------------------------------------
-
-WAVELENGTH_MIN_UM = 0.60   # JWST NIRSpec prism blue cutoff
-WAVELENGTH_MAX_UM = 5.30   # JWST NIRSpec prism red cutoff
-N_WAVELENGTHS = 300
-
-
-def default_wavelength_grid() -> np.ndarray:
-    """300-point log-spaced grid, 0.6–5.3 μm."""
-    return np.logspace(np.log10(WAVELENGTH_MIN_UM), np.log10(WAVELENGTH_MAX_UM), N_WAVELENGTHS)
-
-
-# ---------------------------------------------------------------------------
-# Core dataclass
-# ---------------------------------------------------------------------------
-
+ 
 @dataclass
-class AtmosphereTemplate:
+class InstrumentConfig:
     """
-    A single atmosphere model: wavelength-dependent transit depth spectrum.
-
-    Transit depth D(λ) = (R_p(λ) / R_*)^2 in parts per million.
-    The wavelength dependence encodes absorption features of atmospheric
-    constituents, modulated by cloud fraction and scale height.
+    All the hardware numbers for one instrument mode.
+    Loaded from a JSON file in config/instruments/.
     """
     name: str
-    description: str
-    wavelengths_um: np.ndarray     # microns
-    transit_depth_ppm: np.ndarray  # parts per million
-    parameters: Dict
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "description": self.description,
-            "wavelengths_um": self.wavelengths_um.tolist(),
-            "transit_depth_ppm": self.transit_depth_ppm.tolist(),
-            "parameters": self.parameters,
-        }
-
+    wavelength_min_um: float        # Blue wavelength cutoff [μm]
+    wavelength_max_um: float        # Red wavelength cutoff [μm]
+    spectral_resolution: float      # R = λ/Δλ (resolving power)
+    collecting_area_m2: float       # Effective mirror area [m²]
+    throughput_peak: float          # Peak system efficiency (0–1): mirrors + detector QE
+    read_noise_electrons: float     # Per-read detector read noise [e⁻]
+    dark_current_e_per_s: float     # Thermal dark current [e⁻/s/pixel]
+    n_pixels_per_resolution_element: int  # Pixels per spectral bin
+    pixel_scale_arcsec: float       # Plate scale [arcsec/pixel]
+    detector_gain: float            # Conversion factor [e⁻/ADU]
+    saturation_electrons: float     # Full-well capacity [e⁻]
+    stellar_noise_floor_ppm: float  # Systematic photometric stability floor [ppm]
+    notes: str = ""
+ 
     @classmethod
-    def from_dict(cls, d: dict) -> "AtmosphereTemplate":
-        return cls(
-            name=d["name"],
-            description=d["description"],
-            wavelengths_um=np.array(d["wavelengths_um"]),
-            transit_depth_ppm=np.array(d["transit_depth_ppm"]),
-            parameters=d["parameters"],
-        )
-
-    @property
-    def dominant_species(self) -> str:
-        """Human-readable dominant absorber(s)."""
-        return {
-            "earth_like": "O2 + H2O + CO2 + O3",
-            "high_co2": "CO2 (dominant)",
-            "reduced_o2_high_ch4": "CH4 + H2O + CO2",
-        }.get(self.name, self.name)
-
-
-# ---------------------------------------------------------------------------
-# Spectral feature builders (Gaussian + Lorentzian profiles)
-# ---------------------------------------------------------------------------
-
-def _gaussian(wavelengths: np.ndarray, center: float, width: float) -> np.ndarray:
-    """Normalized Gaussian absorption profile."""
-    return np.exp(-0.5 * ((wavelengths - center) / width) ** 2)
-
-
-def _lorentzian(wavelengths: np.ndarray, center: float, width: float) -> np.ndarray:
-    """Normalized Lorentzian (pressure-broadened) absorption profile."""
-    return 1.0 / (1.0 + ((wavelengths - center) / width) ** 2)
-
-
-# ---------------------------------------------------------------------------
-# Atmosphere template builders
-# ---------------------------------------------------------------------------
-
-def _base_depth_ppm(planet_radius_re: float, star_radius_rs: float) -> float:
-    """
-    Continuum transit depth (R_p/R_*)^2 in ppm.
-    This is the flat-spectrum baseline before atmospheric features are added.
-    """
-    rp_m = planet_radius_re * 6.371e6
-    rs_m = star_radius_rs * 6.96e8
-    return (rp_m / rs_m) ** 2 * 1e6
-
-
-def _atm_amplitude_ppm(scale_height_km: float, star_radius_rs: float) -> float:
-    """
-    Spectral feature amplitude in ppm.
-    Scales as 5 × H / R_* (5 scale heights is the canonical feature depth).
-    """
-    H_m = scale_height_km * 1e3
-    Rs_m = star_radius_rs * 6.96e8
-    return 5.0 * H_m / Rs_m * 1e6
-
-
-def build_earth_like_template(
-    wavelengths: np.ndarray,
-    cloud_fraction: float = 0.5,
-    o2_ch4_ratio: float = 1.0,
-    scale_height_km: float = 8.5,
-    planet_radius_re: float = 1.0,
-    star_radius_rs: float = 0.2,
-) -> AtmosphereTemplate:
-    """
-    Earth-analog atmosphere: O2, H2O, CO2, O3, trace CH4.
-
-    This is the primary biosignature template. Key detection windows:
-    - O2 A-band at 0.762 μm (sharpest biosignature feature)
-    - H2O bands at 0.94, 1.14, 1.38, 1.87, 2.7 μm
-    - CO2 at 1.6, 2.0, 4.3 μm
-    - O3 Chappuis band at ~0.6 μm (broad)
-    - Trace CH4 at 1.67, 2.3 μm
-
-    The simultaneous detection of O2 + CH4 is the gold-standard abiotic
-    disequilibrium biosignature (Sagan et al. 1993; Schwieterman et al. 2018).
-
-    Parameters
-    ----------
-    cloud_fraction : 0–1, fraction of planet disk covered by optically thick clouds.
-                     Clouds mute spectral features proportionally.
-    o2_ch4_ratio : ratio of O2 to CH4 mixing ratio (Earth present-day ≈ 1.0).
-    scale_height_km : pressure scale height H = kT/(mg). Earth ≈ 8.5 km.
-    planet_radius_re : planet radius in Earth radii.
-    star_radius_rs : host star radius in solar radii.
-    """
-    base = _base_depth_ppm(planet_radius_re, star_radius_rs)
-    amp = _atm_amplitude_ppm(scale_height_km, star_radius_rs)
-    f_clear = 1.0 - cloud_fraction   # Clear-sky fraction
-
-    depth = np.full_like(wavelengths, base)
-
-    # ---- Water vapor (H2O) ------------------------------------------------
-    h2o = [
-        (0.940, 0.030, 0.60),   # Y band
-        (1.140, 0.040, 0.90),   # J band
-        (1.380, 0.060, 1.50),   # J/H gap — strong, clear-sky window test
-        (1.870, 0.070, 1.80),   # H/K gap
-        (2.700, 0.150, 1.30),   # K band
-    ]
-    for center, width, strength in h2o:
-        depth += f_clear * amp * strength * _gaussian(wavelengths, center, width)
-
-    # ---- O2 ---------------------------------------------------------------
-    # A-band at 0.762 μm: sharpest, most diagnostic biosignature feature
-    # B-band at 0.688 μm: weaker
-    o2_factor = np.clip(o2_ch4_ratio, 0.001, 10.0)
-    depth += f_clear * amp * 1.0 * o2_factor * _gaussian(wavelengths, 0.762, 0.005)
-    depth += f_clear * amp * 0.25 * o2_factor * _gaussian(wavelengths, 0.688, 0.004)
-
-    # ---- CO2 --------------------------------------------------------------
-    co2 = [
-        (1.600, 0.030, 0.15),   # 1.6 μm band (weak)
-        (2.010, 0.050, 0.20),   # 2.0 μm band (weak)
-        (4.300, 0.200, 0.55),   # 4.3 μm band (strongest CO2 feature)
-    ]
-    for center, width, strength in co2:
-        depth += f_clear * amp * strength * _gaussian(wavelengths, center, width)
-
-    # ---- Ozone (O3) -------------------------------------------------------
-    # Chappuis band: broad, centered ~0.6 μm
-    # Hartley band: UV (<0.35 μm) — outside NIRSpec range
-    depth += f_clear * amp * 0.20 * _lorentzian(wavelengths, 0.600, 0.080)
-
-    # ---- Trace CH4 --------------------------------------------------------
-    # At Earth-present levels, CH4 features are small but detectable
-    ch4_abundance = 1.0 / max(o2_ch4_ratio, 0.01)
-    ch4 = [
-        (1.670, 0.040, 0.04 * ch4_abundance),
-        (2.300, 0.080, 0.07 * ch4_abundance),
-    ]
-    for center, width, strength in ch4:
-        depth += f_clear * amp * np.clip(strength, 0, 0.5) * _gaussian(wavelengths, center, width)
-
-    # ---- Rayleigh scattering slope ----------------------------------------
-    # λ^-4 scattering from N2/O2 adds a blue slope to the continuum
-    rayleigh_amp = f_clear * amp * 0.30
-    depth += rayleigh_amp * (wavelengths[0] / wavelengths) ** 4
-
-    return AtmosphereTemplate(
-        name="earth_like",
-        description="Earth-analog: O2 + H2O + CO2 + O3 + trace CH4 (biosignature-rich)",
-        wavelengths_um=wavelengths,
-        transit_depth_ppm=np.maximum(depth, 0.0),
-        parameters={
-            "cloud_fraction": float(cloud_fraction),
-            "o2_ch4_ratio": float(o2_ch4_ratio),
-            "scale_height_km": float(scale_height_km),
-            "planet_radius_re": float(planet_radius_re),
-            "star_radius_rs": float(star_radius_rs),
-            "base_depth_ppm": float(base),
-        },
-    )
-
-
-def build_high_co2_template(
-    wavelengths: np.ndarray,
-    cloud_fraction: float = 0.30,
-    o2_ch4_ratio: float = 0.01,
-    scale_height_km: float = 7.0,
-    planet_radius_re: float = 1.0,
-    star_radius_rs: float = 0.2,
-) -> AtmosphereTemplate:
-    """
-    Venus-analog atmosphere: CO2-dominated, no biological biosignatures.
-
-    A key *false positive* case for biosignature searches:
-    - Strong, pressure-broadened CO2 bands dominate spectrum
-    - Sulfuric acid clouds suppress H2O
-    - Minimal O2 (trace amounts from CO2 photolysis only)
-    - SO2 features (volcanic)
-
-    The near-absence of H2O despite a warm equilibrium temperature is
-    a key discriminator from the earth_like template.
-
-    Parameters: see build_earth_like_template.
-    """
-    base = _base_depth_ppm(planet_radius_re, star_radius_rs)
-    amp = _atm_amplitude_ppm(scale_height_km, star_radius_rs)
-    f_clear = 1.0 - cloud_fraction
-
-    depth = np.full_like(wavelengths, base)
-
-    # ---- Strong, pressure-broadened CO2 bands ----------------------------
-    # High surface pressure (90 bar on Venus) broadens lines significantly.
-    # We widen features by ×2–3 compared to the earth_like template.
-    co2 = [
-        (1.050, 0.040, 0.30),
-        (1.210, 0.045, 0.35),
-        (1.430, 0.055, 0.55),
-        (1.600, 0.070, 0.80),   # pressure-broadened
-        (2.010, 0.100, 1.20),
-        (2.680, 0.200, 1.50),
-        (4.300, 0.450, 2.00),   # dominant: very broad & deep
-    ]
-    for center, width, strength in co2:
-        depth += f_clear * amp * strength * _gaussian(wavelengths, center, width)
-
-    # ---- Trace H2O (suppressed by sulfuric acid clouds) ------------------
-    depth += f_clear * amp * 0.05 * _gaussian(wavelengths, 1.380, 0.060)
-
-    # ---- SO2 (volcanic; SO2 at 4.0 μm) -----------------------------------
-    depth += f_clear * amp * 0.25 * _gaussian(wavelengths, 4.000, 0.200)
-
-    # ---- Abiotic O2 (trace; photolysis of CO2) ---------------------------
-    depth += f_clear * amp * 0.01 * _gaussian(wavelengths, 0.762, 0.005)
-
-    # ---- Sulfuric acid haze slope (UV-blue scattering) -------------------
-    depth += f_clear * amp * 0.15 * (wavelengths[0] / wavelengths) ** 2
-
-    return AtmosphereTemplate(
-        name="high_co2",
-        description="Venus-analog: CO2-dominated, pressure-broadened, no biosignatures",
-        wavelengths_um=wavelengths,
-        transit_depth_ppm=np.maximum(depth, 0.0),
-        parameters={
-            "cloud_fraction": float(cloud_fraction),
-            "o2_ch4_ratio": float(o2_ch4_ratio),
-            "scale_height_km": float(scale_height_km),
-            "planet_radius_re": float(planet_radius_re),
-            "star_radius_rs": float(star_radius_rs),
-            "base_depth_ppm": float(base),
-        },
-    )
-
-
-def build_reduced_o2_high_ch4_template(
-    wavelengths: np.ndarray,
-    cloud_fraction: float = 0.40,
-    o2_ch4_ratio: float = 0.001,
-    scale_height_km: float = 9.0,
-    planet_radius_re: float = 1.0,
-    star_radius_rs: float = 0.2,
-) -> AtmosphereTemplate:
-    """
-    Anoxic biosphere analog: high CH4, low O2 (Archean Earth, ~2.5 Ga).
-
-    This represents the SECOND biosignature template — a biosphere that
-    produces abundant CH4 (methanogenesis) without photosynthetic O2.
-    Key features:
-    - Strong CH4 bands at 1.0, 1.33, 1.67, 2.3, 3.3 μm
-    - Moderate H2O (liquid water biosphere)
-    - Moderate CO2 (greenhouse, not dominant)
-    - Very weak O2 (sub-ppm levels)
-    - Hydrocarbon haze slope (Titan-like at high CH4 levels)
-
-    The CH4 abundance itself is a biosignature: at these levels without
-    O2 to destroy it, geological sources alone are insufficient
-    (Krissansen-Totton et al. 2018).
-
-    Parameters: see build_earth_like_template.
-    """
-    base = _base_depth_ppm(planet_radius_re, star_radius_rs)
-    amp = _atm_amplitude_ppm(scale_height_km, star_radius_rs)
-    f_clear = 1.0 - cloud_fraction
-
-    # CH4 mixing ratio scales inversely with O2/CH4 ratio
-    # Cap to prevent unphysical spectra
-    ch4_factor = np.clip(1.0 / max(o2_ch4_ratio, 1e-5), 1.0, 50.0)
-
-    depth = np.full_like(wavelengths, base)
-
-    # ---- Strong CH4 absorption bands -------------------------------------
-    ch4 = [
-        (1.000, 0.030, 0.10),   # 1.0 μm (weak)
-        (1.330, 0.040, 0.15),   # 1.33 μm
-        (1.670, 0.050, 0.30),   # 1.67 μm (STRONG — key diagnostic)
-        (2.300, 0.100, 0.50),   # 2.3 μm  (STRONG)
-        (3.300, 0.150, 0.70),   # 3.3 μm  (fundamental; strongest CH4 band)
-    ]
-    for center, width, raw_strength in ch4:
-        strength = np.clip(raw_strength * ch4_factor, 0, 3.0)
-        depth += f_clear * amp * strength * _gaussian(wavelengths, center, width)
-
-    # ---- H2O (present; liquid water biosphere) ---------------------------
-    h2o = [
-        (0.940, 0.030, 0.45),
-        (1.140, 0.040, 0.65),
-        (1.380, 0.060, 1.00),
-        (1.870, 0.070, 1.10),
-        (2.700, 0.150, 0.80),
-    ]
-    for center, width, strength in h2o:
-        depth += f_clear * amp * strength * _gaussian(wavelengths, center, width)
-
-    # ---- CO2 (moderate greenhouse, not dominant) -------------------------
-    co2 = [
-        (1.600, 0.040, 0.30),
-        (2.010, 0.060, 0.40),
-        (4.300, 0.250, 0.70),
-    ]
-    for center, width, strength in co2:
-        depth += f_clear * amp * strength * _gaussian(wavelengths, center, width)
-
-    # ---- Very weak O2 ---------------------------------------------------
-    o2_factor = np.clip(o2_ch4_ratio, 0.0, 1.0)
-    depth += f_clear * amp * 0.5 * o2_factor * _gaussian(wavelengths, 0.762, 0.005)
-
-    # ---- Hydrocarbon haze slope (Titan-like at high CH4) ----------------
-    haze_strength = np.clip((ch4_factor - 1.0) / 50.0, 0, 0.5)
-    depth += f_clear * amp * haze_strength * (wavelengths[0] / wavelengths) ** 2
-
-    # ---- Rayleigh scattering (N2-dominated background gas) ---------------
-    depth += f_clear * amp * 0.25 * (wavelengths[0] / wavelengths) ** 4
-
-    return AtmosphereTemplate(
-        name="reduced_o2_high_ch4",
-        description="Anoxic biosphere: high CH4 + H2O + CO2, negligible O2 (Archean analog)",
-        wavelengths_um=wavelengths,
-        transit_depth_ppm=np.maximum(depth, 0.0),
-        parameters={
-            "cloud_fraction": float(cloud_fraction),
-            "o2_ch4_ratio": float(o2_ch4_ratio),
-            "scale_height_km": float(scale_height_km),
-            "planet_radius_re": float(planet_radius_re),
-            "star_radius_rs": float(star_radius_rs),
-            "base_depth_ppm": float(base),
-        },
-    )
-
-
-def build_hycean_template(
-    wavelengths: np.ndarray,
-    cloud_fraction: float = 0.20,
-    o2_ch4_ratio: float = 0.002,
-    scale_height_km: float = 12.0,
-    planet_radius_re: float = 2.3,
-    star_radius_rs: float = 0.4,
-) -> AtmosphereTemplate:
-    """
-    Hycean world: ocean-covered sub-Neptune with H2-rich atmosphere.
-
-    Motivated by K2-18b (Madhusudhan et al. 2023, ApJL 956 L13), which showed
-    CH4 + CO2 detections and a tentative DMS signal with JWST NIRSpec.
-    Key characteristics:
-    - H2-dominated atmosphere (low mean molecular weight → large scale height)
-    - Strong CH4 (biogenic or abiotic)
-    - CO2 detected; CO depleted (chemical disequilibrium biosignature context)
-    - H2O vapor above a global liquid water ocean
-    - Minimal O2 (reducing atmosphere)
-    - Possible DMS (dimethyl sulfide) at ~3.4 μm — tentative biosignature
-
-    The large planet radius and extended H2 atmosphere give spectral features
-    5–10× larger in ppm than rocky planets of the same host star,
-    making hycean worlds the highest-SNR biosignature targets for JWST.
-
-    Parameters: see build_earth_like_template.
-    Note: planet_radius_re default is 2.3 (K2-18b-like); star_radius_rs default 0.4.
-    """
-    base = _base_depth_ppm(planet_radius_re, star_radius_rs)
-    # H2 atmosphere: scale height ~3× larger than N2 atmosphere at same T
-    # (mean molecular weight μ = 2.3 vs 28 g/mol)
-    effective_H = scale_height_km * (28.0 / 2.3)  # effective scale height in ppm terms
-    amp = _atm_amplitude_ppm(effective_H, star_radius_rs)
-    # Cap amplitude — very large scale heights still bounded by physics
-    amp = min(amp, _atm_amplitude_ppm(scale_height_km, star_radius_rs) * 8.0)
-    f_clear = 1.0 - cloud_fraction
-
-    depth = np.full_like(wavelengths, base)
-
-    # ---- CH4 (strong; biogenic or primordial) ----------------------------
-    # K2-18b: CH4 detected at ~1% mixing ratio
-    ch4_factor = np.clip(1.0 / max(o2_ch4_ratio, 1e-4), 1.0, 20.0)
-    ch4 = [
-        (1.000, 0.030, 0.15),
-        (1.330, 0.040, 0.20),
-        (1.670, 0.055, 0.45),   # STRONG — key K2-18b detection band
-        (2.300, 0.110, 0.65),   # STRONG
-        (3.300, 0.160, 0.80),   # fundamental band
-    ]
-    for center, width, raw_s in ch4:
-        s = np.clip(raw_s * ch4_factor * 0.3, 0, 2.5)
-        depth += f_clear * amp * s * _gaussian(wavelengths, center, width)
-
-    # ---- CO2 (detected on K2-18b at ~1% mixing ratio) -------------------
-    co2 = [
-        (1.600, 0.035, 0.25),
-        (2.010, 0.060, 0.40),
-        (4.300, 0.260, 1.20),   # strongest feature — key detection
-    ]
-    for center, width, strength in co2:
-        depth += f_clear * amp * strength * _gaussian(wavelengths, center, width)
-
-    # ---- H2O vapor (ocean surface evaporation) --------------------------
-    h2o = [
-        (0.940, 0.035, 0.30),
-        (1.140, 0.045, 0.50),
-        (1.380, 0.065, 0.80),
-        (1.870, 0.080, 0.90),
-        (2.700, 0.160, 0.70),
-    ]
-    for center, width, strength in h2o:
-        depth += f_clear * amp * strength * _gaussian(wavelengths, center, width)
-
-    # ---- CO depletion is an absence feature — no CO band at 4.7 μm ------
-    # (CO conspicuously absent on K2-18b; chemical disequilibrium indicator)
-    # Nothing to add here — its ABSENCE is the signal.
-
-    # ---- DMS (dimethyl sulfide) — tentative biosignature at 3.4 μm ------
-    # Very weak; tentative in Madhusudhan+2023; included at reduced strength
-    depth += f_clear * amp * 0.08 * _gaussian(wavelengths, 3.40, 0.06)
-
-    # ---- H2-H2 collision-induced absorption (CIA) — broad IR slope ------
-    # CIA from H2-H2 pairs adds broad opacity longward of 2 μm
-    cia_slope = f_clear * amp * 0.20 * np.where(wavelengths > 2.0,
-                                                  (wavelengths - 2.0) / 3.0, 0.0)
-    depth += cia_slope
-
-    # ---- Rayleigh scattering (H2 atmosphere) ----------------------------
-    depth += f_clear * amp * 0.40 * (wavelengths[0] / wavelengths) ** 4
-
-    return AtmosphereTemplate(
-        name="hycean",
-        description="Hycean world: H2-rich, CH4+CO2+H2O, global ocean (K2-18b analog)",
-        wavelengths_um=wavelengths,
-        transit_depth_ppm=np.maximum(depth, 0.0),
-        parameters={
-            "cloud_fraction": float(cloud_fraction),
-            "o2_ch4_ratio": float(o2_ch4_ratio),
-            "scale_height_km": float(scale_height_km),
-            "planet_radius_re": float(planet_radius_re),
-            "star_radius_rs": float(star_radius_rs),
-            "base_depth_ppm": float(base),
-            "reference": "Madhusudhan et al. 2023, ApJL 956 L13",
-        },
-    )
-
-
-# ---------------------------------------------------------------------------
-# Template grid
-# ---------------------------------------------------------------------------
-
-class TemplateGrid:
-    """
-    Precomputed grid of atmosphere templates over key parameters.
-
-    Grid axes:
-      - Template type: {earth_like, high_co2, reduced_o2_high_ch4}
-      - Cloud fraction: configurable list, default [0.0, 0.3, 0.6, 0.9]
-      - Scale height [km]: configurable list, default [6.0, 8.5, 11.0]
-      - O2/CH4 ratio: template-specific lists
-
-    Total default grid size: 3 types × 4 clouds × 3 scales × 3 ratios = 108 templates.
-
-    Usage:
-        grid = TemplateGrid()
-        grid.build_grid()
-        t = grid.get_template("earth_like", cloud_fraction=0.5, scale_height_km=8.5)
-        grid.save("data/templates/template_grid.json")
-    """
-
-    BUILDERS = {
-        "earth_like": build_earth_like_template,
-        "high_co2": build_high_co2_template,
-        "reduced_o2_high_ch4": build_reduced_o2_high_ch4_template,
-        "hycean": build_hycean_template,
-    }
-
-    DEFAULT_O2_CH4 = {
-        "earth_like":           [0.3, 1.0, 3.0],
-        "high_co2":             [0.001, 0.01, 0.05],
-        "reduced_o2_high_ch4":  [0.0001, 0.001, 0.01],
-        "hycean":               [0.001, 0.005, 0.02],
-    }
-
-    def __init__(self, wavelengths: Optional[np.ndarray] = None):
-        self.wavelengths = wavelengths if wavelengths is not None else default_wavelength_grid()
-        self.templates: Dict[str, List[AtmosphereTemplate]] = {}
-        self._meta: dict = {}
-
-    def build_grid(
-        self,
-        template_names: Optional[List[str]] = None,
-        cloud_fractions: List[float] = [0.0, 0.3, 0.6, 0.9],
-        scale_heights_km: List[float] = [6.0, 8.5, 11.0],
-        o2_ch4_ratios: Optional[Dict[str, List[float]]] = None,
-        planet_radius_re: float = 1.0,
-        star_radius_rs: float = 0.2,
-    ) -> None:
-        """Build and cache all templates in the grid."""
-        if template_names is None:
-            template_names = list(self.BUILDERS.keys())
-        if o2_ch4_ratios is None:
-            o2_ch4_ratios = self.DEFAULT_O2_CH4
-
-        self._meta = {
-            "cloud_fractions": cloud_fractions,
-            "scale_heights_km": scale_heights_km,
-            "o2_ch4_ratios": o2_ch4_ratios,
-            "planet_radius_re": planet_radius_re,
-            "star_radius_rs": star_radius_rs,
-        }
-
-        total = 0
-        for name in template_names:
-            self.templates[name] = []
-            builder = self.BUILDERS[name]
-            ratios = o2_ch4_ratios.get(name, [1.0])
-            for cf in cloud_fractions:
-                for sh in scale_heights_km:
-                    for ratio in ratios:
-                        t = builder(
-                            wavelengths=self.wavelengths,
-                            cloud_fraction=cf,
-                            o2_ch4_ratio=ratio,
-                            scale_height_km=sh,
-                            planet_radius_re=planet_radius_re,
-                            star_radius_rs=star_radius_rs,
-                        )
-                        self.templates[name].append(t)
-                        total += 1
-
-        print(f"TemplateGrid built: {total} templates "
-              f"({len(template_names)} types × {len(cloud_fractions)} cloud fracs × "
-              f"{len(scale_heights_km)} scale heights)")
-
-    def get_template(
-        self,
-        template_name: str,
-        cloud_fraction: float = 0.5,
-        o2_ch4_ratio: float = 1.0,
-        scale_height_km: float = 8.5,
-    ) -> AtmosphereTemplate:
-        """
-        Return the grid template nearest to the requested parameters.
-        Uses a weighted Euclidean distance in normalized parameter space.
-        """
-        if template_name not in self.templates or not self.templates[template_name]:
-            raise KeyError(
-                f"Template '{template_name}' not in grid. "
-                f"Available: {list(self.templates.keys())}. Call build_grid() first."
-            )
-        candidates = self.templates[template_name]
-
-        def _dist(t: AtmosphereTemplate) -> float:
-            p = t.parameters
-            dc = abs(p["cloud_fraction"] - cloud_fraction)
-            dr = abs(np.log10(max(p["o2_ch4_ratio"], 1e-7))
-                     - np.log10(max(o2_ch4_ratio, 1e-7))) * 0.5
-            dh = abs(p["scale_height_km"] - scale_height_km) / 10.0
-            return dc + dr + dh
-
-        return min(candidates, key=_dist)
-
-    def save(self, path: str) -> None:
-        """Serialize the template grid to JSON."""
-        os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
-        payload = {
-            "wavelengths_um": self.wavelengths.tolist(),
-            "meta": self._meta,
-            "templates": {
-                name: [t.to_dict() for t in lst]
-                for name, lst in self.templates.items()
-            },
-        }
-        with open(path, "w") as f:
-            json.dump(payload, f)
-        size_kb = os.path.getsize(path) / 1024
-        print(f"Template grid saved → {path}  ({size_kb:.0f} KB)")
-
-    @classmethod
-    def load(cls, path: str) -> "TemplateGrid":
-        """Load a saved template grid from disk."""
+    def from_json(cls, path: str) -> "InstrumentConfig":
         with open(path) as f:
-            data = json.load(f)
-        grid = cls(wavelengths=np.array(data["wavelengths_um"]))
-        grid._meta = data.get("meta", {})
-        grid.templates = {
-            name: [AtmosphereTemplate.from_dict(d) for d in lst]
-            for name, lst in data["templates"].items()
+            d = json.load(f)
+        return cls(**d)
+ 
+    def to_json(self, path: str) -> None:
+        os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
+        d = {k: v for k, v in self.__dict__.items()}
+        with open(path, "w") as f:
+            json.dump(d, f, indent=2)
+        print(f"Instrument config saved → {path}")
+ 
+ 
+# ---------------------------------------------------------------------------
+# Main instrument model class
+# ---------------------------------------------------------------------------
+ 
+class InstrumentModel:
+    """
+    Computes photon rates, noise sources, and SNR for transit spectroscopy.
+ 
+    The core calculation chain is:
+        stellar flux → photon rate → noise model → SNR per bin
+ 
+    Three noise regimes to be aware of:
+        1. Shot-noise limited (bright stars): noise ∝ sqrt(N_photons)
+        2. Read-noise limited (faint stars / short exposures): noise ∝ sqrt(N_reads)
+        3. Systematic floor (any star): noise floor set by instrument stability (~20 ppm)
+           This floor dominates for very bright targets with many transits.
+    """
+ 
+    def __init__(self, config: InstrumentConfig):
+        self.config = config
+ 
+    @classmethod
+    def from_json(cls, path: str) -> "InstrumentModel":
+        return cls(InstrumentConfig.from_json(path))
+ 
+    # ------------------------------------------------------------------
+    # Throughput
+    # ------------------------------------------------------------------
+ 
+    def throughput(self, wavelengths_um: np.ndarray) -> np.ndarray:
+        """
+        Wavelength-dependent system throughput (0–1).
+ 
+        Accounts for: primary mirror reflectivity, grating/prism efficiency,
+        detector quantum efficiency. Modeled as a smooth Gaussian envelope
+        peaked at the center of the bandpass.
+ 
+        Returns zeros outside the instrument's wavelength range.
+        """
+        wl_min = self.config.wavelength_min_um
+        wl_max = self.config.wavelength_max_um
+        wl_peak = (wl_min + wl_max) / 2.0
+        wl_sigma = (wl_max - wl_min) / 3.0
+ 
+        envelope = self.config.throughput_peak * np.exp(
+            -0.5 * ((wavelengths_um - wl_peak) / wl_sigma) ** 2
+        )
+        in_range = (wavelengths_um >= wl_min) & (wavelengths_um <= wl_max)
+        return np.where(in_range, np.clip(envelope, 0.0, 1.0), 0.0)
+ 
+    def dlambda(self, wavelengths_um: np.ndarray) -> np.ndarray:
+        """
+        Spectral bin width at each wavelength: Δλ = λ / R  [μm].
+        Each bin is one resolution element wide.
+        """
+        return wavelengths_um / self.config.spectral_resolution
+ 
+    # ------------------------------------------------------------------
+    # Stellar photon rate
+    # ------------------------------------------------------------------
+ 
+    def stellar_sed_calibration(self, wavelengths_um: np.ndarray) -> np.ndarray:
+        """
+        Wavelength-dependent calibration factor correcting the blackbody
+        approximation toward real M-dwarf photospheric SEDs.
+ 
+        WHY THIS EXISTS:
+          A blackbody is a poor approximation to a real M-dwarf spectrum
+          longward of ~2 um, where photospheric H2O and CO molecular bands
+          suppress the emergent flux well below the blackbody prediction.
+          Cross-validation against the JWST ETC (Pandeia v3.0) for TRAPPIST-1
+          (Teff=2566K, J=11.35) shows our blackbody model agrees with ETC
+          photon rates to ~5-10% at J-band (1.25 um) but overestimates by
+          factors of ~1.5-2x at 2 um, ~3x at 3 um, and ~3-4x at 4.3 um.
+          See notebooks/instrument_validation.ipynb for the full derivation.
+ 
+        This function returns a smooth multiplicative correction, anchored
+        at 1.0 at 1.25 um (where the blackbody is accurate) and decreasing
+        toward longer wavelengths following the calibration factors derived
+        from ETC cross-validation. It is intentionally conservative (i.e. it
+        REDUCES claimed sensitivity), so applying it never overstates
+        detectability.
+ 
+        Calibration anchor points (wavelength_um: factor):
+            1.25 : 1.00   (ETC agreement, no correction)
+            2.00 : 0.70
+            3.00 : 0.40
+            4.30 : 0.30
+            5.30 : 0.28   (held flat beyond 4.3 um)
+ 
+        Returns
+        -------
+        calib : array of multiplicative factors, same shape as wavelengths_um,
+                to be multiplied onto the raw blackbody photon rate.
+        """
+        anchor_wl  = np.array([0.6, 1.25, 2.0, 3.0, 4.3, 5.3])
+        anchor_cal = np.array([1.00, 1.00, 0.70, 0.40, 0.30, 0.28])
+        calib = np.interp(wavelengths_um, anchor_wl, anchor_cal)
+        return calib
+ 
+    def stellar_photon_rate(
+        self,
+        wavelengths_um: np.ndarray,
+        star_magnitude_j: float,
+        star_teff_k: float = 3500.0,
+        apply_sed_calibration: bool = True,
+    ) -> np.ndarray:
+        """
+        Stellar photon rate arriving at the detector [photons / s / spectral bin].
+ 
+        Method:
+          1. Compute a Planck blackbody SED for the star's Teff
+          2. Anchor the absolute flux to the J-band apparent magnitude
+          3. Multiply by spectral bin width, collecting area, and throughput
+          4. (Optional, default ON) Apply the ETC-derived SED calibration
+             correction from stellar_sed_calibration()
+ 
+        Parameters
+        ----------
+        wavelengths_um    : wavelength array [μm]
+        star_magnitude_j  : J-band (1.25 μm) apparent magnitude of the host star
+        star_teff_k       : stellar effective temperature [K]
+        apply_sed_calibration : if True (default), apply the wavelength-dependent
+            calibration correction derived from JWST ETC cross-validation
+            (see stellar_sed_calibration()). Set False only to reproduce the
+            uncalibrated pre-Week-7 numbers for comparison purposes.
+        """
+        # --- Planck function B_λ (relative SED shape) ---
+        h = 6.626e-34   # J·s
+        c = 3.0e8       # m/s
+        k = 1.381e-23   # J/K
+        wl_m = wavelengths_um * 1e-6
+ 
+        exponent = np.clip((h * c) / (wl_m * k * star_teff_k), 0.01, 700.0)
+        B_lambda = wl_m ** -5 / (np.exp(exponent) - 1.0)
+ 
+        # --- Anchor to J-band magnitude ---
+        # J-band zero point: ~1600 Jy (Vega system)
+        j_zp_jy = 1600.0
+        F_j_jy = j_zp_jy * 10.0 ** (-star_magnitude_j / 2.5)  # [Jy]
+ 
+        # Convert Jy → erg/s/cm²/Hz at 1.25 μm
+        F_j_cgs = F_j_jy * 1e-23  # [erg/s/cm²/Hz]
+ 
+        # Convert to per-μm using dν/dλ = c/λ² [c in μm/s]
+        c_um_s = 3e14
+        F_j_per_um = F_j_cgs * c_um_s / (1.25 ** 2)  # [erg/s/cm²/μm]
+ 
+        # Scale full SED to this J-band flux
+        j_idx = np.argmin(np.abs(wavelengths_um - 1.25))
+        F_lambda = B_lambda / B_lambda[j_idx] * F_j_per_um  # [erg/s/cm²/μm]
+ 
+        # --- Photon energy at each wavelength [erg] ---
+        # E = hc/λ (in CGS: h=6.626e-27, c=3e10, λ in cm)
+        E_photon_erg = (6.626e-27 * 3e10) / (wl_m * 100.0)
+ 
+        # --- Photon rate per unit area per μm [photons/s/cm²/μm] ---
+        photon_flux_per_um = F_lambda / E_photon_erg
+ 
+        # --- Integrate over spectral bin width [photons/s/cm²/bin] ---
+        photon_flux_per_bin = photon_flux_per_um * self.dlambda(wavelengths_um)
+ 
+        # --- Scale to telescope collecting area ---
+        area_cm2 = self.config.collecting_area_m2 * 1e4
+        raw_rate = photon_flux_per_bin * area_cm2
+ 
+        # --- Apply wavelength-dependent throughput ---
+        rate = raw_rate * self.throughput(wavelengths_um)
+ 
+        # --- Apply ETC-derived SED calibration correction ---
+        if apply_sed_calibration:
+            rate = rate * self.stellar_sed_calibration(wavelengths_um)
+ 
+        return np.maximum(rate, 0.0)
+ 
+ 
+    # ------------------------------------------------------------------
+    # Noise model
+    # ------------------------------------------------------------------
+ 
+    def noise_model(
+        self,
+        photon_rate: np.ndarray,
+        exposure_time_s: float,
+        n_exposures: int = 1,
+    ) -> Dict[str, np.ndarray]:
+        """
+        Full noise budget for a given observation.
+ 
+        Noise sources included:
+          - Shot noise: Poisson fluctuations in stellar photon counts
+          - Read noise: detector amplifier noise per read
+          - Dark current: thermally generated electrons
+          - Sky background: zodiacal dust emission (~0.1% of stellar flux)
+          - Stellar noise floor: instrument photometric stability limit (20 ppm)
+            This is a systematic, not random, so it adds in quadrature separately.
+ 
+        Parameters
+        ----------
+        photon_rate     : stellar photon rate [photons/s/bin], from stellar_photon_rate()
+        exposure_time_s : duration of one individual exposure [s]
+        n_exposures     : number of exposures to co-add
+ 
+        Returns
+        -------
+        dict with keys:
+          signal_e            : total collected signal [electrons]
+          shot_noise          : √(signal) [e⁻]
+          read_noise          : read noise contribution [e⁻]
+          dark_noise          : dark current contribution [e⁻]
+          sky_noise           : sky background contribution [e⁻]
+          stellar_floor_e     : systematic noise floor [e⁻]
+          total_random_noise  : quadrature sum of stochastic terms [e⁻]
+          total_noise         : total noise including systematic floor [e⁻]
+        """
+        total_time_s = exposure_time_s * n_exposures
+        n_pix = self.config.n_pixels_per_resolution_element
+ 
+        # --- Signal ---
+        signal_e = photon_rate * total_time_s
+ 
+        # --- Shot noise: σ = √N ---
+        shot_noise = np.sqrt(np.maximum(signal_e, 0.0))
+ 
+        # --- Read noise: σ_read × √(n_exposures × n_pixels) ---
+        read_rms = self.config.read_noise_electrons * np.sqrt(n_exposures * n_pix)
+        read_noise = np.full_like(photon_rate, read_rms)
+ 
+        # --- Dark current: σ = √(dark_rate × t × n_pixels) ---
+        dark_e = self.config.dark_current_e_per_s * total_time_s * n_pix
+        dark_noise = np.full_like(photon_rate, np.sqrt(dark_e))
+ 
+        # --- Sky/zodiacal background: ~0.1% of stellar signal for bright targets ---
+        sky_e = photon_rate * 0.001 * total_time_s
+        sky_noise = np.sqrt(np.maximum(sky_e, 0.0))
+ 
+        # --- Systematic stellar noise floor (non-random) ---
+        # JWST NIRSpec has ~20 ppm stability floor from e.g. detector non-linearity,
+        # thermal drifts, pointing jitter. Sets ultimate precision limit.
+        floor_ppm = self.config.stellar_noise_floor_ppm
+        stellar_floor_e = signal_e * floor_ppm * 1e-6
+ 
+        # --- Total noise ---
+        total_random = np.sqrt(
+            shot_noise**2 + read_noise**2 + dark_noise**2 + sky_noise**2
+        )
+        total_noise = np.sqrt(total_random**2 + stellar_floor_e**2)
+ 
+        return {
+            "signal_e":           signal_e,
+            "shot_noise":         shot_noise,
+            "read_noise":         read_noise,
+            "dark_noise":         dark_noise,
+            "sky_noise":          sky_noise,
+            "stellar_floor_e":    stellar_floor_e,
+            "total_random_noise": total_random,
+            "total_noise":        total_noise,
         }
-        total = sum(len(v) for v in grid.templates.values())
-        print(f"TemplateGrid loaded: {total} templates from {path}")
-        return grid
-
-
+ 
+    # ------------------------------------------------------------------
+    # SNR calculator
+    # ------------------------------------------------------------------
+ 
+    def snr_per_bin(
+        self,
+        photon_rate: np.ndarray,
+        transit_depth_ppm: np.ndarray,
+        transit_duration_s: float,
+        n_transits: int = 10,
+        exposure_time_s: float = 88.0,
+    ) -> Tuple[np.ndarray, Dict]:
+        """
+        Per-wavelength-bin signal-to-noise ratio for detecting transit depth.
+ 
+        SNR_bin = (depth_ppm × 1e-6 × signal_e) / total_noise_e
+ 
+        Parameters
+        ----------
+        photon_rate       : from stellar_photon_rate() [photons/s/bin]
+        transit_depth_ppm : wavelength-dependent transit depth [ppm]
+        transit_duration_s: time spent in-transit per event [s]
+        n_transits        : total number of transits observed
+        exposure_time_s   : individual exposure length [s]
+ 
+        Returns
+        -------
+        snr  : per-bin SNR array
+        budget : full noise budget dict
+        """
+        total_in_transit_s = transit_duration_s * n_transits
+        n_exp = max(1, int(total_in_transit_s / exposure_time_s))
+ 
+        budget = self.noise_model(photon_rate, exposure_time_s, n_exp)
+ 
+        # Transit signal in electrons: depth × total stellar counts
+        transit_signal_e = (transit_depth_ppm * 1e-6) * budget["signal_e"]
+ 
+        snr = np.where(
+            budget["total_noise"] > 0,
+            transit_signal_e / budget["total_noise"],
+            0.0,
+        )
+        return snr, budget
+ 
+    # ------------------------------------------------------------------
+    # Summary
+    # ------------------------------------------------------------------
+ 
+    def summary(self) -> str:
+        c = self.config
+        return (
+            f"{'─'*50}\n"
+            f"Instrument : {c.name}\n"
+            f"Wavelengths: {c.wavelength_min_um:.2f} – {c.wavelength_max_um:.2f} μm\n"
+            f"Resolution : R = {c.spectral_resolution:.0f}  "
+            f"(Δλ ≈ {1.25/c.spectral_resolution*1000:.1f} nm at 1.25 μm)\n"
+            f"Aperture   : {c.collecting_area_m2:.1f} m²  "
+            f"(D ≈ {(4*c.collecting_area_m2/np.pi)**0.5:.1f} m effective)\n"
+            f"Throughput : {c.throughput_peak*100:.0f}% peak\n"
+            f"Read noise : {c.read_noise_electrons:.1f} e⁻/read\n"
+            f"Dark current: {c.dark_current_e_per_s:.3f} e⁻/s/pixel\n"
+            f"Noise floor: {c.stellar_noise_floor_ppm:.0f} ppm (systematic)\n"
+            f"Notes      : {c.notes}\n"
+            f"{'─'*50}"
+        )
+ 
+ 
 # ---------------------------------------------------------------------------
-# Convenience function: three canonical default templates
+# Convenience loaders
 # ---------------------------------------------------------------------------
-
-def get_default_templates(
-    star_radius_rs: float = 0.2,
-    planet_radius_re: float = 1.0,
-) -> Dict[str, AtmosphereTemplate]:
+ 
+def load_jwst_nirspec() -> InstrumentModel:
     """
-    Return the four canonical templates with default parameters.
-    Quick start for demos and notebooks.
+    Load JWST NIRSpec Prism mode configuration.
+    Falls back to hardcoded defaults if config file not found.
     """
-    wl = default_wavelength_grid()
-    return {
-        "earth_like": build_earth_like_template(
-            wl, cloud_fraction=0.5, o2_ch4_ratio=1.0, scale_height_km=8.5,
-            planet_radius_re=planet_radius_re, star_radius_rs=star_radius_rs,
+    path = "config/instruments/jwst_nirspec.json"
+    if os.path.exists(path):
+        return InstrumentModel.from_json(path)
+    # Hardcoded defaults matching config/instruments/jwst_nirspec.json
+    return InstrumentModel(InstrumentConfig(
+        name="JWST NIRSpec Prism",
+        wavelength_min_um=0.60,
+        wavelength_max_um=5.30,
+        spectral_resolution=100.0,
+        collecting_area_m2=25.4,
+        throughput_peak=0.30,
+        read_noise_electrons=15.0,
+        dark_current_e_per_s=0.01,
+        n_pixels_per_resolution_element=2,
+        pixel_scale_arcsec=0.10,
+        detector_gain=1.0,
+        saturation_electrons=65000.0,
+        stellar_noise_floor_ppm=20.0,
+        notes="NIRSpec PRISM/CLEAR, R~100, 0.6-5.3 μm. See JWST ETC for precision modeling.",
+    ))
+ 
+ 
+def load_elt_harmoni() -> InstrumentModel:
+    """
+    Load a hypothetical ELT HARMONI-like configuration (concept only).
+    The 39-meter ELT will enable higher-resolution studies of nearby M-dwarf systems.
+    """
+    path = "config/instruments/elt_example.json"
+    if os.path.exists(path):
+        return InstrumentModel.from_json(path)
+    return InstrumentModel(InstrumentConfig(
+        name="ELT HARMONI (Concept)",
+        wavelength_min_um=0.47,
+        wavelength_max_um=2.45,
+        spectral_resolution=3500.0,
+        collecting_area_m2=978.0,
+        throughput_peak=0.18,
+        read_noise_electrons=3.0,
+        dark_current_e_per_s=0.001,
+        n_pixels_per_resolution_element=3,
+        pixel_scale_arcsec=0.004,
+        detector_gain=1.0,
+        saturation_electrons=100000.0,
+        stellar_noise_floor_ppm=10.0,
+        notes="Conceptual ELT HARMONI-like config. 39m primary, R~3500. Not yet validated.",
+    ))
+ 
+ 
+def load_miri_lrs() -> InstrumentModel:
+    """
+    Load JWST MIRI Low Resolution Spectrometer (LRS) configuration.
+ 
+    Why MIRI matters for biosignatures:
+      MIRI LRS covers 5–14 μm — the mid-infrared regime where several
+      key biosignature and discriminator features live that NIRSpec cannot reach:
+        - CO2 bending mode at 15 μm (just beyond LRS; MIRI photometry can probe it)
+        - O3 at 9.6 μm (ozone; strongest mid-IR biosignature)
+        - N2O at 7.8 μm (nitrous oxide; produced by denitrifying bacteria)
+        - SO2 at 7.3 μm (volcanic; false-positive discriminator)
+        - H2O at 6.3 μm (another water detection window)
+ 
+    MIRI is ~100× less sensitive than NIRSpec per photon due to higher
+    thermal background in the mid-IR, so it requires many more transits.
+    Treat this as a stub for multi-instrument studies in Weeks 5–6.
+ 
+    Ref: Kendrew et al. (2015), PASP 127, 623; Wright et al. (2023), PASP 135, 048003.
+    """
+    path = "config/instruments/miri_lrs.json"
+    if os.path.exists(path):
+        return InstrumentModel.from_json(path)
+    return InstrumentModel(InstrumentConfig(
+        name="JWST MIRI LRS",
+        wavelength_min_um=5.00,
+        wavelength_max_um=14.00,
+        spectral_resolution=100.0,       # R~100 for LRS slitless mode
+        collecting_area_m2=25.4,
+        throughput_peak=0.12,            # Lower than NIRSpec; thermal background dominates
+        read_noise_electrons=30.0,       # Si:As IBC detector; higher read noise
+        dark_current_e_per_s=10.0,       # Thermal background: ~10 e⁻/s/pixel at 5-14 μm
+        n_pixels_per_resolution_element=2,
+        pixel_scale_arcsec=0.11,
+        detector_gain=5.5,
+        saturation_electrons=250000.0,
+        stellar_noise_floor_ppm=50.0,    # Higher floor in mid-IR due to thermal background
+        notes=(
+            "MIRI LRS slitless mode. R~100, 5-14 um. Si:As IBC detector. "
+            "Thermal background dominates over shot noise for most targets. "
+            "Ref: Kendrew+2015; Wright+2023. Use JWST ETC for precise noise budget."
         ),
-        "high_co2": build_high_co2_template(
-            wl, cloud_fraction=0.3, o2_ch4_ratio=0.01, scale_height_km=7.0,
-            planet_radius_re=planet_radius_re, star_radius_rs=star_radius_rs,
-        ),
-        "reduced_o2_high_ch4": build_reduced_o2_high_ch4_template(
-            wl, cloud_fraction=0.4, o2_ch4_ratio=0.001, scale_height_km=9.0,
-            planet_radius_re=planet_radius_re, star_radius_rs=star_radius_rs,
-        ),
-        "hycean": build_hycean_template(
-            wl, cloud_fraction=0.2, o2_ch4_ratio=0.002, scale_height_km=12.0,
-            planet_radius_re=max(planet_radius_re * 2.0, 2.3),
-            star_radius_rs=max(star_radius_rs * 2.0, 0.4),
-        ),
-    }
-
-
+    ))
+ 
+ 
+def save_miri_lrs_config() -> None:
+    """Write the MIRI LRS config JSON to disk."""
+    miri = load_miri_lrs()
+    miri.config.to_json("config/instruments/miri_lrs.json")
+ 
+ 
 # ---------------------------------------------------------------------------
-# CLI / standalone demo
+# CLI demo
 # ---------------------------------------------------------------------------
-
+ 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Build atmosphere template grid")
-    parser.add_argument("--out", default="data/templates/template_grid.json")
-    parser.add_argument("--star-radius", type=float, default=0.2, help="Star radius [R_sun]")
-    parser.add_argument("--planet-radius", type=float, default=1.0, help="Planet radius [R_earth]")
-    args = parser.parse_args()
-
-    print("Building atmosphere template grid...")
-    grid = TemplateGrid()
-    grid.build_grid(planet_radius_re=args.planet_radius, star_radius_rs=args.star_radius)
-    grid.save(args.out)
-
-    # Quick sanity check
-    templates = get_default_templates(star_radius_rs=args.star_radius, planet_radius_re=args.planet_radius)
-    for name, t in templates.items():
-        base = t.parameters["base_depth_ppm"]
-        peak = t.transit_depth_ppm.max()
-        print(f"  {name:30s}: base={base:.0f} ppm, peak={peak:.0f} ppm, "
-              f"delta={peak - base:.0f} ppm")
+    import sys
+    sys.path.insert(0, os.path.dirname(__file__))
+ 
+    jwst = load_jwst_nirspec()
+    print(jwst.summary())
+ 
+    wl = np.logspace(np.log10(0.6), np.log10(5.3), 300)
+ 
+    # Example: TRAPPIST-1 host star
+    rate = jwst.stellar_photon_rate(wl, star_magnitude_j=11.35, star_teff_k=2566)
+    print(f"\nTRAPPIST-1 photon rate:")
+    print(f"  Peak : {rate.max():.2e} photons/s/bin at {wl[np.argmax(rate)]:.2f} μm")
+    print(f"  Median (in-band): {np.median(rate[rate > 0]):.2e} photons/s/bin")
+ 
+    budget = jwst.noise_model(rate, exposure_time_s=88.0, n_exposures=500)
+    sig = budget["signal_e"]
+    noise = budget["total_noise"]
+    noise_ppm = np.where(sig > 0, noise / sig * 1e6, 1e6)
+    print(f"\nNoise at 1.4 μm H2O band:")
+    idx = np.argmin(np.abs(wl - 1.38))
+    print(f"  Signal : {sig[idx]:.2e} e⁻")
+    print(f"  Noise  : {noise[idx]:.2e} e⁻  ({noise_ppm[idx]:.0f} ppm)")
