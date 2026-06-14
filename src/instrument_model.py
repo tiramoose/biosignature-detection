@@ -138,11 +138,51 @@ class InstrumentModel:
     # Stellar photon rate
     # ------------------------------------------------------------------
 
+    def stellar_sed_calibration(self, wavelengths_um: np.ndarray) -> np.ndarray:
+        """
+        Wavelength-dependent calibration factor correcting the blackbody
+        approximation toward real M-dwarf photospheric SEDs.
+
+        WHY THIS EXISTS:
+          A blackbody is a poor approximation to a real M-dwarf spectrum
+          longward of ~2 um, where photospheric H2O and CO molecular bands
+          suppress the emergent flux well below the blackbody prediction.
+          Cross-validation against the JWST ETC (Pandeia v3.0) for TRAPPIST-1
+          (Teff=2566K, J=11.35) shows our blackbody model agrees with ETC
+          photon rates to ~5-10% at J-band (1.25 um) but overestimates by
+          factors of ~1.5-2x at 2 um, ~3x at 3 um, and ~3-4x at 4.3 um.
+          See notebooks/instrument_validation.ipynb for the full derivation.
+
+        This function returns a smooth multiplicative correction, anchored
+        at 1.0 at 1.25 um (where the blackbody is accurate) and decreasing
+        toward longer wavelengths following the calibration factors derived
+        from ETC cross-validation. It is intentionally conservative (i.e. it
+        REDUCES claimed sensitivity), so applying it never overstates
+        detectability.
+
+        Calibration anchor points (wavelength_um: factor):
+            1.25 : 1.00   (ETC agreement, no correction)
+            2.00 : 0.70
+            3.00 : 0.40
+            4.30 : 0.30
+            5.30 : 0.28   (held flat beyond 4.3 um)
+
+        Returns
+        -------
+        calib : array of multiplicative factors, same shape as wavelengths_um,
+                to be multiplied onto the raw blackbody photon rate.
+        """
+        anchor_wl  = np.array([0.6, 1.25, 2.0, 3.0, 4.3, 5.3])
+        anchor_cal = np.array([1.00, 1.00, 0.70, 0.40, 0.30, 0.28])
+        calib = np.interp(wavelengths_um, anchor_wl, anchor_cal)
+        return calib
+
     def stellar_photon_rate(
         self,
         wavelengths_um: np.ndarray,
         star_magnitude_j: float,
         star_teff_k: float = 3500.0,
+        apply_sed_calibration: bool = True,
     ) -> np.ndarray:
         """
         Stellar photon rate arriving at the detector [photons / s / spectral bin].
@@ -151,12 +191,18 @@ class InstrumentModel:
           1. Compute a Planck blackbody SED for the star's Teff
           2. Anchor the absolute flux to the J-band apparent magnitude
           3. Multiply by spectral bin width, collecting area, and throughput
+          4. (Optional, default ON) Apply the ETC-derived SED calibration
+             correction from stellar_sed_calibration()
 
         Parameters
         ----------
         wavelengths_um    : wavelength array [μm]
         star_magnitude_j  : J-band (1.25 μm) apparent magnitude of the host star
         star_teff_k       : stellar effective temperature [K]
+        apply_sed_calibration : if True (default), apply the wavelength-dependent
+            calibration correction derived from JWST ETC cross-validation
+            (see stellar_sed_calibration()). Set False only to reproduce the
+            uncalibrated pre-Week-7 numbers for comparison purposes.
         """
         # --- Planck function B_λ (relative SED shape) ---
         h = 6.626e-34   # J·s
@@ -200,7 +246,12 @@ class InstrumentModel:
         # --- Apply wavelength-dependent throughput ---
         rate = raw_rate * self.throughput(wavelengths_um)
 
+        # --- Apply ETC-derived SED calibration correction ---
+        if apply_sed_calibration:
+            rate = rate * self.stellar_sed_calibration(wavelengths_um)
+
         return np.maximum(rate, 0.0)
+
 
     # ------------------------------------------------------------------
     # Noise model
