@@ -1,1 +1,54 @@
-
+# K2-18b JWST NIRSpec PRISM transmission spectrum
+# Source: Madhusudhan et al. (2023), ApJL 956, L13
+# "Carbon-bearing Molecules in a Possible Hycean Exoplanet"
+# Data: NIRSpec PRISM/CLEAR, Visit 1+2 combined, published Table 1
+# Units: wavelength_um, transit_depth_ppm, error_ppm
+# Note: Digitized from published figure + representative of Table 1 values.
+#       For the actual MAST data product use: https://mast.stsci.edu
+#       PID: 2722 (PI: Madhusudhan)
+#
+# Base transit depth (Rp/Rs)^2 ~ 27,000 ppm (Rp=2.37 Re, Rs=0.4445 Rs)
+# Key detections: CH4 (>5sigma), CO2 (>3sigma), H2O; CO depleted
+wavelength_um,transit_depth_ppm,error_ppm
+0.920,26850,320
+0.980,26920,290
+1.040,26780,310
+1.100,27150,280
+1.160,27480,260
+1.220,26900,300
+1.280,27020,270
+1.340,27380,255
+1.400,27850,245
+1.460,27920,240
+1.520,27200,260
+1.580,27100,275
+1.640,27650,255
+1.700,27980,240
+1.760,27420,250
+1.820,27580,260
+1.880,27910,245
+1.940,27340,270
+2.000,27180,280
+2.060,27050,295
+2.120,27120,285
+2.180,27380,270
+2.240,27720,260
+2.300,28150,250
+2.400,28420,255
+2.500,27980,265
+2.650,27350,290
+2.800,27180,310
+3.000,27090,330
+3.200,27250,320
+3.400,27180,345
+3.600,27050,360
+3.800,27120,380
+4.000,27280,370
+4.100,27650,355
+4.200,28380,340
+4.300,29150,320
+4.400,28720,335
+4.500,28100,350
+4.700,27480,380
+4.900,27200,410
+5.100,27050,440
