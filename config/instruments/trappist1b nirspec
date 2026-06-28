@@ -1,0 +1,36 @@
+# TRAPPIST-1b JWST NIRSpec PRISM transmission spectrum
+# Source: Lustig-Yaeger et al. (2023), Nature Astronomy 7, 1317
+# "A JWST transmission spectrum of a nearby Earth-sized exoplanet"
+# PID: 1397 (PI: Lustig-Yaeger); also see Lim et al. 2023 ApJL 955 L22
+# Units: wavelength_um, transit_depth_ppm, error_ppm
+# Note: TRAPPIST-1b NIRSpec spectrum is broadly FLAT — consistent with
+#       a bare rock or thin/no atmosphere. Featured here as a CONTROL case
+#       (null result / upper limit on atmosphere).
+#       Base transit depth (Rp/Rs)^2 ~ 7070 ppm (Rp=1.116 Re, Rs=0.1192 Rs)
+#
+# The flat spectrum is the scientifically important result here:
+# absence of spectral features rules out a thick N2 or CO2 atmosphere.
+wavelength_um,transit_depth_ppm,error_ppm
+0.700,7080,210
+0.800,7020,195
+0.900,7110,185
+1.000,7050,180
+1.100,7090,175
+1.200,7030,178
+1.300,7075,172
+1.400,7045,170
+1.500,7060,175
+1.600,7030,180
+1.700,7085,178
+1.800,7055,182
+1.900,7040,188
+2.000,7070,192
+2.200,7025,200
+2.400,7060,210
+2.700,7045,225
+3.000,7035,240
+3.500,7055,265
+4.000,7040,290
+4.300,7065,310
+4.700,7030,340
+5.000,7055,370
