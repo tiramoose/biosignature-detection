@@ -1,0 +1,43 @@
+# config/priors.yaml
+# Population priors — Week 3 upgrade: literature-based occurrence rates + Gaia distances
+# Sources documented in docs/prior_sources.md
+
+n_planets: 1000
+seed: 42
+
+# ── Host star temperature ────────────────────────────────────────────────────
+# M dwarfs (Teff < 4000 K) make up ~75% of stars within 15 pc (Winters et al. 2019)
+# K dwarfs (4000-5200 K) ~15%; G dwarfs ~8%; F dwarfs ~2%
+# Modeled as a triangular distribution peaked at M-dwarf temperatures
+star_teff_min_k: 2500.0
+star_teff_max_k: 5200.0
+star_teff_peak_k: 3100.0
+
+# ── Planet radius priors ─────────────────────────────────────────────────────
+# Fulton et al. (2017) + Petigura et al. (2022): bimodal radius distribution
+# Rocky peak: 1.0-1.5 Re ("super-Earths"), gap at ~1.7 Re, sub-Neptune peak: 2.0-3.5 Re
+# Occurrence rate for rocky HZ planets around M dwarfs: ~0.2-0.3 per star (Dressing & Charbonneau 2015)
+radius_rocky_mean_re: 1.15
+radius_rocky_std_re: 0.25
+radius_subneptune_mean_re: 2.35
+radius_subneptune_std_re: 0.45
+rocky_fraction: 0.58        # Fraction from rocky distribution; Fulton gap informed
+
+# ── Distance prior ───────────────────────────────────────────────────────────
+# Gaia DR3: ~200 M dwarfs within 15 pc; ~2000 within 50 pc (Reylé et al. 2021)
+# Volume-weighted uniform sampling (N ∝ d^2 dd) is correct prior for a magnitude-limited survey
+distance_max_pc: 50.0
+
+# ── Occurrence rates (informational — used in yield calculations) ─────────────
+# These are not drawn from but referenced in analysis:
+# HZ rocky planet occurrence around M dwarfs: eta_earth_m = 0.24 (Dressing & Charbonneau 2015)
+# HZ rocky planet occurrence around K dwarfs: eta_earth_k = 0.17 (Petigura et al. 2022)
+# Transit probability for HZ planet around M dwarf (P~10d): ~2-5%
+eta_earth_m_dwarf: 0.24
+eta_earth_k_dwarf: 0.17
+mean_transit_prob_hz_m: 0.035
+
+# ── Orbital period prior ─────────────────────────────────────────────────────
+# Log-uniform; HZ periods for M dwarfs typically 5-30 days
+period_min_days: 1.0
+period_max_days: 400.0
