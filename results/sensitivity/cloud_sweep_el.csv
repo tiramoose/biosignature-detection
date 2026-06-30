@@ -1,0 +1,7 @@
+varied_param,param_value,atmosphere_type,n_transits,distance_pc,det_prob,median_snr,n_trials,bias_recovery,bias_fp_rate
+cloud_fraction,0.0,earth_like,10,12.43,1.0,139.80807938527911,20,1.0,0.0
+cloud_fraction,0.2,earth_like,10,12.43,1.0,111.84646350822335,20,1.0,0.0
+cloud_fraction,0.4,earth_like,10,12.43,1.0,83.88484763116752,20,1.0,0.0
+cloud_fraction,0.6,earth_like,10,12.43,1.0,55.923231754111626,20,1.0,0.0
+cloud_fraction,0.8,earth_like,10,12.43,1.0,27.96161587705584,20,1.0,0.0
+cloud_fraction,0.95,earth_like,10,12.43,1.0,6.990403969263943,20,1.0,0.0

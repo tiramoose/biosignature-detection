@@ -1,0 +1,5 @@
+varied_param,param_value,atmosphere_type,n_transits,distance_pc,det_prob,median_snr,n_trials,bias_recovery,bias_fp_rate
+n_transits,5.0,earth_like,5,12.43,1.0,54.05939908999356,20,1.0,0.0
+n_transits,10.0,earth_like,10,12.43,1.0,69.90403969263956,20,1.0,0.0
+n_transits,20.0,earth_like,20,12.43,1.0,85.97057000372051,20,1.0,0.0
+n_transits,50.0,earth_like,50,12.43,1.0,103.72309240724269,20,1.0,0.0
