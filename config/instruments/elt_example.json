@@ -12,5 +12,4 @@
   "detector_gain": 1.0,
   "saturation_electrons": 100000.0,
   "stellar_noise_floor_ppm": 10.0,
-  "notes": "Conceptual ELT HARMONI config. 39m primary mirror, R~3500. NOT yet validated. Use for forward-looking comparisons only."
 }
