@@ -1,6 +1,5 @@
 # config/experiment.yaml
 # Experiment configuration for Monte Carlo population analysis
-# Edit this file to change run parameters without touching any code.
 
 experiment_name: exp1
 description: "Pilot MC run — biosignature detectability across synthetic population"
