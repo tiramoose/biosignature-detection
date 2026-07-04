@@ -1,38 +1,3 @@
-"""
-bayesian_inference.py
----------------------
-Bayesian nested sampling for the fiducial biosignature detection case.
-
-What this file does:
-  Runs a full Bayesian inference over atmosphere model parameters for a
-  single fiducial planet (Earth-twin at 10 pc around an M3 dwarf), using
-  the dynesty nested sampler. This produces:
-    1. Posterior distributions over cloud fraction, scale height, O2/CH4 ratio
-    2. Bayesian evidence Z for each atmosphere model
-    3. Log Bayes factor B = ln(Z_earth_like / Z_flat) — the gold standard
-       detection statistic in modern exoplanet atmosphere papers
-
-  This does NOT replace the large MC (which uses frequentist 5σ thresholds).
-  It runs alongside it for the fiducial case only, elevating the paper's
-  methodological sophistication. The ln(B) result validates the 5σ claim.
-
-  In the paper: "We supplement our frequentist detection criterion with a
-  Bayesian evidence calculation for the fiducial case (Earth-twin, 10 pc,
-  10 transits), confirming the 5σ result corresponds to ln(B) = [X] ≥ 5
-  (strong evidence on the Jeffreys scale)."
-
-Where to put this file:
-  → biosignatures_project/src/bayesian_inference.py
-
-Depends on:
-  dynesty (pip install dynesty) | → src/atmosphere_templates.py | instrument_model.py | observation_sim.py
-
-Usage:
-    from bayesian_inference import BayesianRetrieval
-    result = BayesianRetrieval().run_fiducial()
-    result.print_summary()
-"""
-
 import numpy as np
 import os, sys
 from dataclasses import dataclass
@@ -149,6 +114,7 @@ class BayesianRetrieval:
         "earth_like":          build_earth_like_template,
         "high_co2":            build_high_co2_template,
         "reduced_o2_high_ch4": build_reduced_o2_high_ch4_template,
+        "abiotic_o2":          build_abiotic_o2_template,
     }
 
     def __init__(
