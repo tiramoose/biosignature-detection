@@ -1,35 +1,3 @@
-"""
-monte_carlo.py
---------------
-Large Monte Carlo population analysis for biosignature detectability.
-
-What this file does:
-  Draws N synthetic planets from the population prior, assigns each one a
-  random atmosphere type, simulates a JWST observation at several transit
-  counts, and records whether the biosignature was detected and correctly
-  classified. With N = 10,000 this produces the statistical backbone of the
-  paper — detection probability as a function of distance, planet radius,
-  star type, cloud cover, and transit count.
-
-  Uses joblib for parallelism (set n_jobs=1 if multiprocessing causes issues
-  on your laptop).
-
-Where to put this file:
-  → biosignatures_project/src/monte_carlo.py
-
-Depends on:
-  → src/synth_population.py
-  → src/atmosphere_templates.py
-  → src/instrument_model.py
-  → src/observation_sim.py
-  → src/retrieval.py (optional — for classification accuracy)
-  → config/experiment.yaml
-
-Usage:
-    python src/monte_carlo.py                         # uses config/experiment.yaml
-    python src/monte_carlo.py --config config/experiment.yaml --n 5000
-"""
-
 import numpy as np
 import os, sys, yaml, csv, time, argparse
 from dataclasses import dataclass, asdict, field
@@ -42,6 +10,7 @@ from atmosphere_templates import (
     TemplateGrid, default_wavelength_grid,
     build_earth_like_template, build_high_co2_template,
     build_reduced_o2_high_ch4_template, build_hycean_template,
+    build_abiotic_o2_template,
 )
 from instrument_model import load_jwst_nirspec, load_miri_lrs
 from observation_sim import ObservationSimulator, PlanetSystem, ObservationResult
@@ -93,6 +62,7 @@ _BUILDERS = {
     "high_co2":            (build_high_co2_template, 0.01),
     "reduced_o2_high_ch4": (build_reduced_o2_high_ch4_template, 0.001),
     "hycean":              (build_hycean_template, 0.002),
+    "abiotic_o2":          (build_abiotic_o2_template, 1000.0),
 }
 
 
