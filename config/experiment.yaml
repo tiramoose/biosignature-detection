@@ -19,10 +19,12 @@ detection_threshold_sigma: 5.0 # Detection significance threshold
 # ── Atmosphere sampling ────────────────────────────────────────────────────
 # Probability of each atmosphere type being assigned to a planet
 atmosphere_weights:
-  earth_like:           0.25   # Equal priors — no astrophysical preference assumed
-  high_co2:             0.25
-  reduced_o2_high_ch4:  0.25
-  hycean:               0.25
+  atmosphere_weights:
+  earth_like:           0.20
+  high_co2:             0.20
+  reduced_o2_high_ch4:  0.20
+  hycean:               0.20
+  abiotic_o2:           0.20
 
 # ── Population filter (before simulation) ─────────────────────────────────
 max_distance_pc: 50.0
