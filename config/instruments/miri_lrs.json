@@ -1,0 +1,16 @@
+{
+  "name": "JWST MIRI LRS",
+  "wavelength_min_um": 5.00,
+  "wavelength_max_um": 14.00,
+  "spectral_resolution": 100.0,
+  "collecting_area_m2": 25.4,
+  "throughput_peak": 0.12,
+  "read_noise_electrons": 30.0,
+  "dark_current_e_per_s": 10.0,
+  "n_pixels_per_resolution_element": 2,
+  "pixel_scale_arcsec": 0.11,
+  "detector_gain": 5.5,
+  "saturation_electrons": 250000.0,
+  "stellar_noise_floor_ppm": 50.0,
+  "notes": "MIRI LRS slitless mode. R~100, 5-14 um. Si:As IBC detector. Thermal background dominates. Ref: Kendrew+2015 PASP 127 623; Wright+2023 PASP 135 048003. Validate with JWST ETC."
+}
