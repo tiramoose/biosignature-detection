@@ -1,37 +1,3 @@
-"""
-real_targets.py
----------------
-Detection forecast pipeline for all real habitable-zone targets.
-
-What this file does:
-  Runs the full observation simulator against each of the 12 confirmed
-  HZ targets in data/target_list.csv, under both a nominal assumption
-  (cloud fraction = 0.5) and a pessimistic assumption (cloud fraction = 0.8).
-  For K2-18b and TRAPPIST-1b, where real JWST spectra exist, it also
-  compares the forecast to the published detection result.
-
-  The output is the DETECTION FORECAST TABLE — Table 1 or Table 2 in the
-  paper. It answers: "For each real target, how many transits does JWST
-  need to detect an Earth-like atmosphere?"
-
-  This is the figure that gets shared when others cite your work.
-
-Where to put this file:
-  → biosignatures_project/src/real_targets.py
-
-Depends on:
-  → data/target_list.csv
-  → src/atmosphere_templates.py
-  → src/instrument_model.py
-  → src/observation_sim.py
-
-Usage:
-    from real_targets import RealTargetAnalyzer
-    analyzer = RealTargetAnalyzer()
-    table = analyzer.run()
-    analyzer.save(table, 'results/real_targets/')
-"""
-
 import numpy as np
 import os, sys, csv
 from dataclasses import dataclass
@@ -41,7 +7,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from atmosphere_templates import (
     build_earth_like_template, build_high_co2_template,
     build_reduced_o2_high_ch4_template, build_hycean_template,
-    default_wavelength_grid,
+    default_wavelength_grid, build_abiotic_o2_template,
 )
 from instrument_model import load_jwst_nirspec
 from observation_sim import ObservationSimulator, PlanetSystem
@@ -112,15 +78,11 @@ class TargetForecast:
 # ---------------------------------------------------------------------------
 
 class RealTargetAnalyzer:
-    """
-    Loads the real target list and runs the detection pipeline on each target.
-    Produces the paper's Table 1 (detection forecast table).
-    """
 
     # Published JWST results for comparison (where spectra exist)
     PUBLISHED_RESULTS = {
-        "K2-18b":       "CH4+CO2 detected (Madhusudhan+2023)",
-        "TRAPPIST-1b":  "Flat spectrum, no thick atm (Lustig-Yaeger+2023)",
+        "K2-18b":       "No published JWST spectrum yet",
+        "TRAPPIST-1b":  "No published JWST spectrum yet,
         "TRAPPIST-1e":  "No published JWST spectrum yet",
         "LHS_1140b":    "No published JWST spectrum yet",
     }
@@ -192,6 +154,7 @@ class RealTargetAnalyzer:
             "high_co2":            (build_high_co2_template, 0.01),
             "reduced_o2_high_ch4": (build_reduced_o2_high_ch4_template, 0.001),
             "hycean":              (build_hycean_template, 0.002),
+            "abiotic_o2":          (build_abiotic_o2_template, 1000.0),
         }
         builder, o2_ch4 = builders[atm_type]
 
