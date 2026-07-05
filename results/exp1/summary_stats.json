@@ -1,0 +1,128 @@
+{
+  "5": {
+    "earth_like": {
+      "n_total": 1915,
+      "n_detected": 1907,
+      "det_prob_all": 0.995822454308094,
+      "det_prob_hz": 0.9963636363636363,
+      "det_prob_d20": 0.9905660377358491,
+      "median_snr": 50.28618482852798
+    },
+    "high_co2": {
+      "n_total": 2015,
+      "n_detected": 2012,
+      "det_prob_all": 0.9985111662531018,
+      "det_prob_hz": 1.0,
+      "det_prob_d20": 1.0,
+      "median_snr": 62.02430967788795
+    },
+    "reduced_o2_high_ch4": {
+      "n_total": 2084,
+      "n_detected": 2084,
+      "det_prob_all": 1.0,
+      "det_prob_hz": 1.0,
+      "det_prob_d20": 1.0,
+      "median_snr": 122.90168917540014
+    },
+    "hycean": {
+      "n_total": 1995,
+      "n_detected": 1995,
+      "det_prob_all": 1.0,
+      "det_prob_hz": 1.0,
+      "det_prob_d20": 1.0,
+      "median_snr": 824.7977224732664
+    },
+    "abiotic_o2": {
+      "n_total": 1991,
+      "n_detected": 1679,
+      "det_prob_all": 0.843294826720241,
+      "det_prob_hz": 0.8825503355704698,
+      "det_prob_d20": 0.9572649572649573,
+      "median_snr": 12.338598812252151
+    }
+  },
+  "10": {
+    "earth_like": {
+      "n_total": 1915,
+      "n_detected": 1911,
+      "det_prob_all": 0.997911227154047,
+      "det_prob_hz": 0.9963636363636363,
+      "det_prob_d20": 0.9905660377358491,
+      "median_snr": 55.185958626799916
+    },
+    "high_co2": {
+      "n_total": 2015,
+      "n_detected": 2013,
+      "det_prob_all": 0.9990074441687344,
+      "det_prob_hz": 1.0,
+      "det_prob_d20": 1.0,
+      "median_snr": 70.80396110051386
+    },
+    "reduced_o2_high_ch4": {
+      "n_total": 2084,
+      "n_detected": 2084,
+      "det_prob_all": 1.0,
+      "det_prob_hz": 1.0,
+      "det_prob_d20": 1.0,
+      "median_snr": 136.86379209085953
+    },
+    "hycean": {
+      "n_total": 1995,
+      "n_detected": 1995,
+      "det_prob_all": 1.0,
+      "det_prob_hz": 1.0,
+      "det_prob_d20": 1.0,
+      "median_snr": 914.1292392879676
+    },
+    "abiotic_o2": {
+      "n_total": 1991,
+      "n_detected": 1761,
+      "det_prob_all": 0.8844801607232546,
+      "det_prob_hz": 0.8993288590604027,
+      "det_prob_d20": 0.9572649572649573,
+      "median_snr": 14.423862610223841
+    }
+  },
+  "20": {
+    "earth_like": {
+      "n_total": 1915,
+      "n_detected": 1912,
+      "det_prob_all": 0.9984334203655353,
+      "det_prob_hz": 0.9963636363636363,
+      "det_prob_d20": 0.9905660377358491,
+      "median_snr": 58.788227387662154
+    },
+    "high_co2": {
+      "n_total": 2015,
+      "n_detected": 2013,
+      "det_prob_all": 0.9990074441687344,
+      "det_prob_hz": 1.0,
+      "det_prob_d20": 1.0,
+      "median_snr": 78.77116174643007
+    },
+    "reduced_o2_high_ch4": {
+      "n_total": 2084,
+      "n_detected": 2084,
+      "det_prob_all": 1.0,
+      "det_prob_hz": 1.0,
+      "det_prob_d20": 1.0,
+      "median_snr": 147.1027810014179
+    },
+    "hycean": {
+      "n_total": 1995,
+      "n_detected": 1995,
+      "det_prob_all": 1.0,
+      "det_prob_hz": 1.0,
+      "det_prob_d20": 1.0,
+      "median_snr": 988.7095176394627
+    },
+    "abiotic_o2": {
+      "n_total": 1991,
+      "n_detected": 1800,
+      "det_prob_all": 0.9040683073832245,
+      "det_prob_hz": 0.9295302013422819,
+      "det_prob_d20": 0.9658119658119658,
+      "median_snr": 16.312952161015083
+    }
+  }
+}
