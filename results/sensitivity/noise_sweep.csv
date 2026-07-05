@@ -1,5 +1,5 @@
 varied_param,param_value,atmosphere_type,n_transits,distance_pc,det_prob,median_snr,n_trials,bias_recovery,bias_fp_rate
-noise_floor_ppm,10.0,earth_like,10,12.43,1.0,80.54483490634456,20,1.0,0.0
-noise_floor_ppm,20.0,earth_like,10,12.43,1.0,69.90403969263956,20,1.0,0.0
-noise_floor_ppm,30.0,earth_like,10,12.43,1.0,59.011163452805505,20,1.0,0.0
-noise_floor_ppm,50.0,earth_like,10,12.43,1.0,42.84357881358376,20,1.0,0.0
+noise_floor_ppm,10.0,earth_like,10,12.43,1.0,57.943500277626875,20,1.0,0.0
+noise_floor_ppm,20.0,earth_like,10,12.43,1.0,49.03843545350427,20,1.0,0.0
+noise_floor_ppm,30.0,earth_like,10,12.43,1.0,41.21644276535703,20,1.0,0.0
+noise_floor_ppm,50.0,earth_like,10,12.43,1.0,29.17566457898443,20,1.0,0.0

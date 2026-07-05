@@ -1,7 +1,7 @@
 varied_param,param_value,atmosphere_type,n_transits,distance_pc,det_prob,median_snr,n_trials,bias_recovery,bias_fp_rate
-cloud_fraction,0.0,high_co2,10,12.43,1.0,159.45545709875702,20,1.0,0.0
-cloud_fraction,0.2,high_co2,10,12.43,1.0,127.56436567900565,20,1.0,0.0
-cloud_fraction,0.4,high_co2,10,12.43,1.0,95.67327425925424,20,1.0,0.0
-cloud_fraction,0.6,high_co2,10,12.43,1.0,63.78218283950284,20,1.0,0.0
-cloud_fraction,0.8,high_co2,10,12.43,1.0,31.891091419751387,20,1.0,0.0
-cloud_fraction,0.95,high_co2,10,12.43,1.0,7.972772854937859,20,1.0,0.0
+cloud_fraction,0.0,high_co2,10,12.43,1.0,100.80137453377654,20,1.0,0.0
+cloud_fraction,0.2,high_co2,10,12.43,1.0,78.55274076776197,20,1.0,0.0
+cloud_fraction,0.4,high_co2,10,12.43,1.0,57.76530479129248,20,1.0,0.0
+cloud_fraction,0.6,high_co2,10,12.43,1.0,37.77467787486762,20,1.0,0.0
+cloud_fraction,0.8,high_co2,10,12.43,1.0,17.93114684068265,20,1.0,0.0
+cloud_fraction,0.95,high_co2,10,12.43,0.5,4.880633765772,20,1.0,0.0
