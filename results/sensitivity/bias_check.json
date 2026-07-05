@@ -1,0 +1,362 @@
+{
+  "earth_like__cf0.0__sh6.0": {
+    "atm_type": "earth_like",
+    "cloud_fraction": 0.0,
+    "scale_height_km": 6.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 70.00951127951609,
+    "n_trials": 10,
+    "pass": true
+  },
+  "earth_like__cf0.0__sh8.5": {
+    "atm_type": "earth_like",
+    "cloud_fraction": 0.0,
+    "scale_height_km": 8.5,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 100.39650034430241,
+    "n_trials": 10,
+    "pass": true
+  },
+  "earth_like__cf0.0__sh11.0": {
+    "atm_type": "earth_like",
+    "cloud_fraction": 0.0,
+    "scale_height_km": 11.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 132.11491632993483,
+    "n_trials": 10,
+    "pass": true
+  },
+  "earth_like__cf0.3__sh6.0": {
+    "atm_type": "earth_like",
+    "cloud_fraction": 0.3,
+    "scale_height_km": 6.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 48.3158634296803,
+    "n_trials": 10,
+    "pass": true
+  },
+  "earth_like__cf0.3__sh8.5": {
+    "atm_type": "earth_like",
+    "cloud_fraction": 0.3,
+    "scale_height_km": 8.5,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 69.87495366546145,
+    "n_trials": 10,
+    "pass": true
+  },
+  "earth_like__cf0.3__sh11.0": {
+    "atm_type": "earth_like",
+    "cloud_fraction": 0.3,
+    "scale_height_km": 11.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 92.27062371705976,
+    "n_trials": 10,
+    "pass": true
+  },
+  "earth_like__cf0.6__sh6.0": {
+    "atm_type": "earth_like",
+    "cloud_fraction": 0.6,
+    "scale_height_km": 6.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 28.2412649703787,
+    "n_trials": 10,
+    "pass": true
+  },
+  "earth_like__cf0.6__sh8.5": {
+    "atm_type": "earth_like",
+    "cloud_fraction": 0.6,
+    "scale_height_km": 8.5,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 39.49332336850845,
+    "n_trials": 10,
+    "pass": true
+  },
+  "earth_like__cf0.6__sh11.0": {
+    "atm_type": "earth_like",
+    "cloud_fraction": 0.6,
+    "scale_height_km": 11.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 51.6186882407384,
+    "n_trials": 10,
+    "pass": true
+  },
+  "earth_like__cf0.9__sh6.0": {
+    "atm_type": "earth_like",
+    "cloud_fraction": 0.9,
+    "scale_height_km": 6.0,
+    "n_transits": 10,
+    "recovery_rate": 0.7,
+    "median_snr": 5.984407340455749,
+    "n_trials": 10,
+    "pass": true
+  },
+  "earth_like__cf0.9__sh8.5": {
+    "atm_type": "earth_like",
+    "cloud_fraction": 0.9,
+    "scale_height_km": 8.5,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 9.055068684053563,
+    "n_trials": 10,
+    "pass": true
+  },
+  "earth_like__cf0.9__sh11.0": {
+    "atm_type": "earth_like",
+    "cloud_fraction": 0.9,
+    "scale_height_km": 11.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 12.154515683623005,
+    "n_trials": 10,
+    "pass": true
+  },
+  "high_co2__cf0.0__sh6.0": {
+    "atm_type": "high_co2",
+    "cloud_fraction": 0.0,
+    "scale_height_km": 6.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 69.17997650844364,
+    "n_trials": 10,
+    "pass": true
+  },
+  "high_co2__cf0.0__sh8.5": {
+    "atm_type": "high_co2",
+    "cloud_fraction": 0.0,
+    "scale_height_km": 8.5,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 100.13793503994745,
+    "n_trials": 10,
+    "pass": true
+  },
+  "high_co2__cf0.0__sh11.0": {
+    "atm_type": "high_co2",
+    "cloud_fraction": 0.0,
+    "scale_height_km": 11.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 131.02241611364326,
+    "n_trials": 10,
+    "pass": true
+  },
+  "high_co2__cf0.3__sh6.0": {
+    "atm_type": "high_co2",
+    "cloud_fraction": 0.3,
+    "scale_height_km": 6.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 47.53365173676964,
+    "n_trials": 10,
+    "pass": true
+  },
+  "high_co2__cf0.3__sh8.5": {
+    "atm_type": "high_co2",
+    "cloud_fraction": 0.3,
+    "scale_height_km": 8.5,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 68.79636018902724,
+    "n_trials": 10,
+    "pass": true
+  },
+  "high_co2__cf0.3__sh11.0": {
+    "atm_type": "high_co2",
+    "cloud_fraction": 0.3,
+    "scale_height_km": 11.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 90.85568105107524,
+    "n_trials": 10,
+    "pass": true
+  },
+  "high_co2__cf0.6__sh6.0": {
+    "atm_type": "high_co2",
+    "cloud_fraction": 0.6,
+    "scale_height_km": 6.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 27.01955478485254,
+    "n_trials": 10,
+    "pass": true
+  },
+  "high_co2__cf0.6__sh8.5": {
+    "atm_type": "high_co2",
+    "cloud_fraction": 0.6,
+    "scale_height_km": 8.5,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 37.66818865583516,
+    "n_trials": 10,
+    "pass": true
+  },
+  "high_co2__cf0.6__sh11.0": {
+    "atm_type": "high_co2",
+    "cloud_fraction": 0.6,
+    "scale_height_km": 11.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 49.79092312189016,
+    "n_trials": 10,
+    "pass": true
+  },
+  "high_co2__cf0.9__sh6.0": {
+    "atm_type": "high_co2",
+    "cloud_fraction": 0.9,
+    "scale_height_km": 6.0,
+    "n_transits": 10,
+    "recovery_rate": 0.6,
+    "median_snr": 5.562955300185983,
+    "n_trials": 10,
+    "pass": true
+  },
+  "high_co2__cf0.9__sh8.5": {
+    "atm_type": "high_co2",
+    "cloud_fraction": 0.9,
+    "scale_height_km": 8.5,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 8.833605788115863,
+    "n_trials": 10,
+    "pass": true
+  },
+  "high_co2__cf0.9__sh11.0": {
+    "atm_type": "high_co2",
+    "cloud_fraction": 0.9,
+    "scale_height_km": 11.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 12.256603141254002,
+    "n_trials": 10,
+    "pass": true
+  },
+  "reduced_o2_high_ch4__cf0.0__sh6.0": {
+    "atm_type": "reduced_o2_high_ch4",
+    "cloud_fraction": 0.0,
+    "scale_height_km": 6.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 145.91828185448384,
+    "n_trials": 10,
+    "pass": true
+  },
+  "reduced_o2_high_ch4__cf0.0__sh8.5": {
+    "atm_type": "reduced_o2_high_ch4",
+    "cloud_fraction": 0.0,
+    "scale_height_km": 8.5,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 209.0474813521932,
+    "n_trials": 10,
+    "pass": true
+  },
+  "reduced_o2_high_ch4__cf0.0__sh11.0": {
+    "atm_type": "reduced_o2_high_ch4",
+    "cloud_fraction": 0.0,
+    "scale_height_km": 11.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 271.3546288059373,
+    "n_trials": 10,
+    "pass": true
+  },
+  "reduced_o2_high_ch4__cf0.3__sh6.0": {
+    "atm_type": "reduced_o2_high_ch4",
+    "cloud_fraction": 0.3,
+    "scale_height_km": 6.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 100.96876610799771,
+    "n_trials": 10,
+    "pass": true
+  },
+  "reduced_o2_high_ch4__cf0.3__sh8.5": {
+    "atm_type": "reduced_o2_high_ch4",
+    "cloud_fraction": 0.3,
+    "scale_height_km": 8.5,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 144.9386787827458,
+    "n_trials": 10,
+    "pass": true
+  },
+  "reduced_o2_high_ch4__cf0.3__sh11.0": {
+    "atm_type": "reduced_o2_high_ch4",
+    "cloud_fraction": 0.3,
+    "scale_height_km": 11.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 188.56633984718115,
+    "n_trials": 10,
+    "pass": true
+  },
+  "reduced_o2_high_ch4__cf0.6__sh6.0": {
+    "atm_type": "reduced_o2_high_ch4",
+    "cloud_fraction": 0.6,
+    "scale_height_km": 6.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 56.197981406005084,
+    "n_trials": 10,
+    "pass": true
+  },
+  "reduced_o2_high_ch4__cf0.6__sh8.5": {
+    "atm_type": "reduced_o2_high_ch4",
+    "cloud_fraction": 0.6,
+    "scale_height_km": 8.5,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 82.23174397972875,
+    "n_trials": 10,
+    "pass": true
+  },
+  "reduced_o2_high_ch4__cf0.6__sh11.0": {
+    "atm_type": "reduced_o2_high_ch4",
+    "cloud_fraction": 0.6,
+    "scale_height_km": 11.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 105.30731403829806,
+    "n_trials": 10,
+    "pass": true
+  },
+  "reduced_o2_high_ch4__cf0.9__sh6.0": {
+    "atm_type": "reduced_o2_high_ch4",
+    "cloud_fraction": 0.9,
+    "scale_height_km": 6.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 12.193905345834223,
+    "n_trials": 10,
+    "pass": true
+  },
+  "reduced_o2_high_ch4__cf0.9__sh8.5": {
+    "atm_type": "reduced_o2_high_ch4",
+    "cloud_fraction": 0.9,
+    "scale_height_km": 8.5,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 18.719725448019624,
+    "n_trials": 10,
+    "pass": true
+  },
+  "reduced_o2_high_ch4__cf0.9__sh11.0": {
+    "atm_type": "reduced_o2_high_ch4",
+    "cloud_fraction": 0.9,
+    "scale_height_km": 11.0,
+    "n_transits": 10,
+    "recovery_rate": 1.0,
+    "median_snr": 24.776234711795418,
+    "n_trials": 10,
+    "pass": true
+  }
+}
