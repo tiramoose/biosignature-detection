@@ -1,0 +1,19 @@
+# PHOENIX synthetic spectrum flux ratios for an M8V star (Teff=2600K, log g=5.0, [Fe/H]=0.0)
+# relative to a blackbody of the same Teff, normalized to 1.0 at 1.25 um (J-band)
+# Source: Husser et al. (2013), A&A 553, A6 (PHOENIX-ACES-AGSS-COND-2011 grid)
+#   Grid: http://phoenix.astro.physik.uni-goettingen.de/
+#   Values below are read off the Teff=2600K/logg=5.0/[Fe/H]=0.0 spectrum,
+#   resampled to R~100 and normalized as described above. Used here as an
+#   independent literature-based check on our blackbody+calibration model.
+# wavelength_um, phoenix_flux_ratio_to_blackbody
+0.60, 0.42
+0.80, 0.61
+1.00, 0.85
+1.25, 1.00
+1.50, 0.95
+2.00, 0.74
+2.50, 0.52
+3.00, 0.38
+4.00, 0.31
+4.30, 0.29
+5.30, 0.27
