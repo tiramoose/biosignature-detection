@@ -6,7 +6,8 @@ from typing import Dict, Optional, Tuple
 sys.path.insert(0, os.path.dirname(__file__))
 from atmosphere_templates import (
     build_earth_like_template, build_high_co2_template,
-    build_reduced_o2_high_ch4_template, default_wavelength_grid,
+    build_reduced_o2_high_ch4_template, build_abiotic_o2_template,
+    default_wavelength_grid,
 )
 from instrument_model import load_jwst_nirspec
 from observation_sim import ObservationSimulator, PlanetSystem
