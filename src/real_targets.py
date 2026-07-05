@@ -81,8 +81,8 @@ class RealTargetAnalyzer:
 
     # Published JWST results for comparison (where spectra exist)
     PUBLISHED_RESULTS = {
-        "K2-18b":       "No published JWST spectrum yet",
-        "TRAPPIST-1b":  "No published JWST spectrum yet,
+        "K2-18b":       "CH4+CO2 detected (Madhusudhan et al. 2023)",
+        "TRAPPIST-1b":  "Flat spectrum, no thick atmosphere (Lustig-Yaeger et al. 2023)",
         "TRAPPIST-1e":  "No published JWST spectrum yet",
         "LHS_1140b":    "No published JWST spectrum yet",
     }
