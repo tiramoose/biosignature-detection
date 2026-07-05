@@ -1,7 +1,3 @@
-# config/experiment.yaml
-# Experiment configuration for Monte Carlo population analysis
-# Edit this file to change run parameters without touching any code.
-
 experiment_name: exp1
 description: "Pilot MC run — biosignature detectability across synthetic population"
 
@@ -19,7 +15,6 @@ detection_threshold_sigma: 5.0 # Detection significance threshold
 # ── Atmosphere sampling ────────────────────────────────────────────────────
 # Probability of each atmosphere type being assigned to a planet
 atmosphere_weights:
-  atmosphere_weights:
   earth_like:           0.20
   high_co2:             0.20
   reduced_o2_high_ch4:  0.20
