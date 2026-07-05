@@ -1,23 +1,10 @@
-"""
-synth_population.py
--------------------
-Synthetic exoplanet population generator for the biosignatures pipeline.
-
-Draws planet and star properties from configurable priors (Week 1).
-Week 2 builds atmosphere_templates.py on top of this.
-
-Usage:
-    python synth_population.py                      # uses config/priors.yaml
-    python synth_population.py --n 500 --seed 42   # custom run
-"""
-
 import numpy as np
 import yaml
 import json
 import os
 import argparse
-from dataclasses import dataclass, asdict, field
-from typing import List, Optional, Dict
+from dataclasses import dataclass, asdict
+from typing import List, Dict
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +75,9 @@ def _teff_to_stellar_props(teff: float) -> Dict:
     Uses simple empirical scalings valid for M–K–G–F dwarfs.
     """
     if teff < 3000:
-        rs, ms, star_type = 0.12 + (teff - 2500) / 5000 * 0.08, 0.12, "M"
+        rs = 0.12 + (teff - 2500) / 500 * 0.08
+        ms = 0.08 + (teff - 2500) / 500 * 0.12
+        star_type = "M"
     elif teff < 3700:
         rs = 0.20 + (teff - 3000) / 700 * 0.25
         ms = 0.20 + (teff - 3000) / 700 * 0.30
