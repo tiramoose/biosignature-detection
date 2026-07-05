@@ -1,7 +1,7 @@
 import numpy as np
 import os, sys, yaml, csv, time, argparse
-from dataclasses import dataclass, asdict, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass, asdict
+from typing import Dict, List, Optional
 from joblib import Parallel, delayed
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -102,7 +102,7 @@ def _run_one_trial(
     ps = PlanetSystem(
         planet_name=f"planet_{planet.planet_id}",
         star_teff_k=planet.star_teff_k,
-        star_radius_rs=planet.star_radius_rs,
+        star_radius_rs=s_rs,
         star_magnitude_j=planet.star_magnitude_j,
         planet_radius_re=p_re,
         orbital_period_days=planet.orbital_period_days,
