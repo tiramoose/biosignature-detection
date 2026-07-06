@@ -145,7 +145,7 @@ def _run_one_trial(
         exposure_time_s = 1.0
 
     photon_rate = instrument.stellar_photon_rate(wl, planet.star_magnitude_j, planet.star_teff_k)
-    total_transit_s = planet.transit_duration_s * n_transits
+    total_transit_s = (planet.transit_duration_hours * 3600) * n_transits
     n_exp = max(1, int(total_transit_s / exposure_time_s))
 
     budget = instrument.noise_model(photon_rate, exposure_time_s, n_exp)
