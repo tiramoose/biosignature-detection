@@ -1,36 +1,3 @@
-"""
-instrument_model.py
--------------------
-Models the JWST NIRSpec telescope + instrument response for
-transmission spectroscopy of transiting exoplanets.
-
-What this file does:
-  Given a host star's brightness and temperature, this module computes:
-  (1) How many photons per second JWST actually collects at each wavelength
-  (2) The noise budget: shot noise, read noise, dark current, sky background,
-      and the instrument's fundamental photometric stability floor (~20 ppm)
-  (3) The signal-to-noise ratio achievable for a transit of given depth
-
-  In short: atmosphere_templates.py says what the planet's spectrum LOOKS like.
-  instrument_model.py says how well JWST can MEASURE it.
-
-Where to put this file:
-  → biosignatures_project/src/instrument_model.py
-
-Config file it loads:
-  → biosignatures_project/config/instruments/jwst_nirspec.json
-  → biosignatures_project/config/instruments/elt_example.json
-
-Usage:
-    from instrument_model import load_jwst_nirspec
-    jwst = load_jwst_nirspec()
-    print(jwst.summary())
-
-    wl = np.linspace(0.6, 5.3, 300)
-    rate = jwst.stellar_photon_rate(wl, star_magnitude_j=11.35, star_teff_k=2566)
-    noise = jwst.noise_model(rate, exposure_time_s=100, n_exposures=500)
-"""
-
 import numpy as np
 import json
 import os
@@ -139,43 +106,16 @@ class InstrumentModel:
     # ------------------------------------------------------------------
 
     def stellar_sed_calibration(self, wavelengths_um: np.ndarray) -> np.ndarray:
-        """
-        Wavelength-dependent calibration factor correcting the blackbody
-        approximation toward real M-dwarf photospheric SEDs.
-
-        WHY THIS EXISTS:
-          A blackbody is a poor approximation to a real M-dwarf spectrum
-          longward of ~2 um, where photospheric H2O and CO molecular bands
-          suppress the emergent flux well below the blackbody prediction.
-          Cross-validation against the JWST ETC (Pandeia v3.0) for TRAPPIST-1
-          (Teff=2566K, J=11.35) shows our blackbody model agrees with ETC
-          photon rates to ~5-10% at J-band (1.25 um) but overestimates by
-          factors of ~1.5-2x at 2 um, ~3x at 3 um, and ~3-4x at 4.3 um.
-          See notebooks/instrument_validation.ipynb for the full derivation.
-
-        This function returns a smooth multiplicative correction, anchored
-        at 1.0 at 1.25 um (where the blackbody is accurate) and decreasing
-        toward longer wavelengths following the calibration factors derived
-        from ETC cross-validation. It is intentionally conservative (i.e. it
-        REDUCES claimed sensitivity), so applying it never overstates
-        detectability.
-
-        Calibration anchor points (wavelength_um: factor):
-            1.25 : 1.00   (ETC agreement, no correction)
-            2.00 : 0.70
-            3.00 : 0.40
-            4.30 : 0.30
-            5.30 : 0.28   (held flat beyond 4.3 um)
-
-        Returns
-        -------
-        calib : array of multiplicative factors, same shape as wavelengths_um,
-                to be multiplied onto the raw blackbody photon rate.
-        """
-        anchor_wl  = np.array([0.6, 1.25, 2.0, 3.0, 4.3, 5.3])
-        anchor_cal = np.array([1.00, 1.00, 0.70, 0.40, 0.30, 0.28])
-        calib = np.interp(wavelengths_um, anchor_wl, anchor_cal)
-        return calib
+    phoenix_wl, phoenix_ratio = [], []
+    with open("data/phoenix/m_dwarf_sed_ratios.csv") as f:
+        for line in f:
+            if line.startswith("#") or not line.strip():
+                continue
+            a, b = line.strip().split(",")
+            phoenix_wl.append(float(a)); phoenix_ratio.append(float(b))
+    phoenix_wl, phoenix_ratio = np.array(phoenix_wl), np.array(phoenix_ratio)
+    return np.interp(wavelengths_um, phoenix_wl, phoenix_ratio,
+                      left=phoenix_ratio[0], right=phoenix_ratio[-1])
 
     def stellar_photon_rate(
         self,
