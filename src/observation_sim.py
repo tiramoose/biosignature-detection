@@ -1,42 +1,3 @@
-"""
-observation_sim.py
-------------------
-End-to-end transit spectroscopy observation simulator.
-
-What this file does:
-  This is the pipeline's "glue layer." It takes all three prior components:
-    - A planet+star system (from synth_population.py)
-    - An atmosphere model (from atmosphere_templates.py)
-    - A telescope/instrument (from instrument_model.py)
-  ...and produces a realistic SIMULATED OBSERVATION: a noisy spectrum that
-  looks like what JWST would actually return for that planet.
-
-  It can also run a *grid* of simulations (many planets × many atmosphere
-  types × many transit counts) to build detection-horizon tables —
-  i.e., "how far away can JWST detect an Earth-like atmosphere?"
-
-Where to put this file:
-  → biosignatures_project/src/observation_sim.py
-
-Depends on:
-  → src/atmosphere_templates.py
-  → src/instrument_model.py
-  → src/synth_population.py  (for PlanetSystem dataclass)
-
-Usage:
-    from observation_sim import ObservationSimulator, PlanetSystem
-    from atmosphere_templates import get_default_templates
-    from instrument_model import load_jwst_nirspec
-
-    jwst = load_jwst_nirspec()
-    sim = ObservationSimulator(jwst, rng=np.random.default_rng(42))
-    templates = get_default_templates(star_radius_rs=0.12, planet_radius_re=0.92)
-
-    planet = PlanetSystem.trappist1e()
-    result = sim.simulate(planet, templates["earth_like"], n_transits=10)
-    print(result.summary())
-"""
-
 import numpy as np
 import os
 import sys
@@ -202,6 +163,49 @@ class ObservationResult:
     baseline_ppm:        float = 0.0  # flat (Rp/Rs)^2 continuum depth, no atmosphere info
 
     @property
+
+    def simulate_batch(
+    self,
+    planet: PlanetSystem,
+    template: AtmosphereTemplate,
+    n_transits: int,
+    n_trials: int,
+    rng: Optional[np.random.Generator] = None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Draw n_trials independent noise realizations for the SAME
+    (planet, template, n_transits) in one vectorized call, instead of
+    calling simulate() n_trials times and recomputing the deterministic
+    photon-rate / noise-budget calculation on every iteration.
+
+    Returns
+    -------
+    observed : (n_trials, n_wl) noisy depth spectra [ppm]
+    noise_ppm: (n_wl,) per-bin 1-sigma noise (same for every trial)
+    true_depth:(n_wl,) noiseless template depth [ppm]
+    """
+    rng = rng if rng is not None else self.rng
+    wl = template.wavelengths_um
+    true_depth = template.transit_depth_ppm
+
+    photon_rate = self.instrument.stellar_photon_rate(
+        wl, star_magnitude_j=planet.star_magnitude_j, star_teff_k=planet.star_teff_k,
+    )
+    total_transit_s = planet.transit_duration_s * n_transits
+    n_exp = max(1, int(total_transit_s / self.exposure_time_s))
+    budget = self.instrument.noise_model(photon_rate, self.exposure_time_s, n_exp)
+
+    sig = budget["signal_e"]
+    noise_ppm = np.where(sig > 1.0, budget["total_noise"] / sig * 1e6, 1e6)
+    inst = self.instrument.config
+    in_range = (wl >= inst.wavelength_min_um) & (wl <= inst.wavelength_max_um)
+    noise_ppm = np.where(in_range, noise_ppm, 1e6)
+
+    # single vectorized draw instead of n_trials separate rng.normal() calls
+    noise_draws = rng.normal(0.0, noise_ppm, size=(n_trials, len(wl)))
+    observed = true_depth[None, :] + noise_draws
+    return observed, noise_ppm, true_depth
+  
     def detection_snr(self) -> float:
         """
         Broadband detection SNR via matched filter (quadrature over all bins).
