@@ -116,10 +116,23 @@ def _run_one_trial(
     else:
         instrument = load_jwst_nirspec()
 
-    rng = np.random.default_rng(seed)
-    sim = ObservationSimulator(instrument=instrument, rng=rng)
+    def simulate_batch(self, planet, template, n_transits, n_trials, rng=None):
+    rng = rng or self.rng
+    wl = template.wavelengths_um
+    true_depth = template.transit_depth_ppm
+    photon_rate = self.instrument.stellar_photon_rate(wl, planet.star_magnitude_j, planet.star_teff_k)
+    total_transit_s = planet.transit_duration_s * n_transits
+    n_exp = max(1, int(total_transit_s / self.exposure_time_s))
+    budget = self.instrument.noise_model(photon_rate, self.exposure_time_s, n_exp)
+    sig = budget["signal_e"]
+    noise_ppm = np.where(sig > 1.0, budget["total_noise"] / sig * 1e6, 1e6)
+    in_range = (wl >= self.instrument.config.wavelength_min_um) & (wl <= self.instrument.config.wavelength_max_um)
+    noise_ppm = np.where(in_range, noise_ppm, 1e6)
 
-    obs = sim.simulate(ps, template, n_transits=n_transits)
+    # one call instead of n_trials calls, shape (n_trials, n_wl)
+    noise_draws = rng.normal(0.0, noise_ppm, size=(n_trials, len(wl)))
+    observed = true_depth[None, :] + noise_draws
+    return observed, noise_ppm  # feed each row into retrieval/SNR code as before
 
     # Corrected SNR: spectral modulation / noise (not absolute depth)
     baseline = template.parameters["base_depth_ppm"]
