@@ -226,42 +226,36 @@ class TemplateRetrieval:
         best_template = None
         best_model_ppm = None
 
-        for atm_name, template_list in self.grid.templates.items():
-            all_chi2[atm_name] = []
-            for tmpl in template_list:
-                model_interp = self._interpolate_template(tmpl, wavelengths_obs)
+        def fit_vectorized(self, wavelengths_obs, observed_depth_ppm, noise_ppm,
+                    wavelength_range=None):
+    mask = (noise_ppm > 0) & (noise_ppm < 1e5)
+    if wavelength_range is not None:
+        mask &= (wavelengths_obs >= wavelength_range[0]) & (wavelengths_obs <= wavelength_range[1])
 
-                # Allow a single free parameter: scale the base depth
-                # Minimize chi2 over this scale factor analytically
-                valid = mask & np.isfinite(model_interp) & (noise_ppm > 0)
-                if valid.sum() < 5:
-                    continue
+    results = {}
+    for atm_name, template_list in self.grid.templates.items():
+        # (n_templates, n_wl_native) -> interpolate ALL templates onto obs grid at once
+        depths = np.stack([t.transit_depth_ppm for t in template_list])          # (K, Nn)
+        wl_native = template_list[0].wavelengths_um                             # shared axis
+        # vectorized interp: np.interp only does 1-D, so loop here is over K (cheap, no
+        # per-call chi2/scale work) OR use np.apply_along_axis with a single call amortized;
+        # for a strictly single-call vectorized version, precompute once per unique native grid:
+        model = np.vstack([np.interp(wavelengths_obs, wl_native, d) for d in depths])  # (K, No)
 
-                obs_v = observed_depth_ppm[valid]
-                mod_v = model_interp[valid]
-                err_v = noise_ppm[valid]
-                w = 1.0 / err_v**2
+        valid = mask & np.all(np.isfinite(model), axis=0)
+        obs_v, err_v = observed_depth_ppm[valid], noise_ppm[valid]
+        mod_v = model[:, valid]                                                  # (K, Nv)
+        w = 1.0 / err_v**2
 
-                # Optimal scale: minimize sum[(obs - scale*model)^2 / err^2]
-                # d/d(scale) = 0 → scale = sum(w * obs * model) / sum(w * model^2)
-                denom = np.sum(w * mod_v**2)
-                if denom < 1e-30:
-                    continue
-                scale = np.sum(w * obs_v * mod_v) / denom
-                scale = np.clip(scale, 0.5, 2.0)  # physical range
+        denom  = np.einsum('kj,j->k', mod_v**2, w)
+        numer  = np.einsum('kj,j,j->k', mod_v, obs_v, w)
+        scale  = np.clip(numer / np.maximum(denom, 1e-30), 0.5, 2.0)             # (K,)
+        resid  = obs_v[None, :] - scale[:, None] * mod_v
+        chi2   = np.einsum('kj,j->k', resid**2, w)                              # (K,)
 
-                scaled_model = model_interp * scale
-                chi2_val = self._chi2(observed_depth_ppm, scaled_model, noise_ppm, mask)
-
-                all_chi2[atm_name].append((chi2_val, tmpl))
-
-                if chi2_val < best_chi2:
-                    best_chi2 = chi2_val
-                    best_template = tmpl
-                    best_model_ppm = scaled_model
-
-            # Sort by chi2 ascending
-            all_chi2[atm_name].sort(key=lambda x: x[0])
+        best_i = np.argmin(chi2)
+        results[atm_name] = (chi2, best_i, scale[best_i], template_list[best_i])
+    return results
 
         if best_template is None:
             raise RuntimeError("No templates could be fit. Check grid and data overlap.")
