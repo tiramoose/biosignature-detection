@@ -1,7 +1,9 @@
-import numpy as np
-from dataclasses import dataclass, field
+import os
+import sys
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
-import os, sys
+
+import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
 from atmosphere_templates import AtmosphereTemplate, TemplateGrid
@@ -19,31 +21,30 @@ class RetrievalResult:
     Contains the best-fit template, chi-squared values for all templates,
     BIC-based model ranking, and marginalized parameter constraints.
     """
-    # Best-fit template
-    best_template:       AtmosphereTemplate
-    best_chi2:           float
-    best_chi2_reduced:   float          # chi2 / degrees of freedom
-    n_dof:               int            # degrees of freedom
+    best_template: AtmosphereTemplate
+    best_chi2: float
+    best_chi2_reduced: float   # chi2 / degrees of freedom
+    n_dof: int                 # degrees of freedom
 
     # All templates ranked by chi2
-    all_chi2:            Dict[str, List[Tuple[float, AtmosphereTemplate]]]
+    all_chi2: Dict[str, List[Tuple[float, AtmosphereTemplate]]]
     # Format: {template_name: [(chi2_value, template), ...]} sorted ascending
 
     # Model comparison (BIC: lower = better)
-    bic_scores:          Dict[str, float]
-    delta_bic:           Dict[str, float]   # BIC_i - BIC_best
-    model_weights:       Dict[str, float]   # Bayesian model weights (sum to 1)
+    bic_scores: Dict[str, float]
+    delta_bic: Dict[str, float]     # BIC_i - BIC_best
+    model_weights: Dict[str, float]  # Bayesian model weights (sum to 1)
 
     # Detection confidence
-    detection_snr:       float    # SNR of best-fit atmosphere vs. flat spectrum
-    flat_chi2:           float    # chi2 for a featureless (flat) spectrum
-    delta_chi2_flat:     float    # chi2_flat - chi2_best (positive = detection)
+    detection_snr: float     # SNR of best-fit atmosphere vs. flat spectrum
+    flat_chi2: float         # chi2 for a featureless (flat) spectrum
+    delta_chi2_flat: float   # chi2_flat - chi2_best (positive = detection)
 
     # Input data
-    wavelengths_um:      np.ndarray
-    observed_depth_ppm:  np.ndarray
-    noise_ppm:           np.ndarray
-    best_fit_model_ppm:  np.ndarray   # best-fit template interpolated to obs wavelengths
+    wavelengths_um: np.ndarray
+    observed_depth_ppm: np.ndarray
+    noise_ppm: np.ndarray
+    best_fit_model_ppm: np.ndarray  # best-fit template interpolated to obs wavelengths
 
     @property
     def is_detected(self) -> bool:
@@ -62,20 +63,20 @@ class RetrievalResult:
 
     def summary(self) -> str:
         lines = [
-            f"{'─'*55}",
-            f"  RETRIEVAL RESULT",
+            f"{'─' * 55}",
+            "  RETRIEVAL RESULT",
             f"  Best fit    : {self.best_template.name}",
             f"  Chi2_red    : {self.best_chi2_reduced:.2f}  (ideal ~1.0)",
             f"  Detection   : {self.detection_snr:.1f}σ  "
             f"({'DETECTED' if self.is_detected else 'not detected'})",
             f"  Delta-chi2  : {self.delta_chi2_flat:.1f}  (vs. flat spectrum)",
-            f"",
-            f"  Model ranking (BIC):",
+            "",
+            "  Model ranking (BIC):",
         ]
         for name, dbic in self.top_models:
-            weight = self.model_weights.get(name, 0)
+            weight = self.model_weights.get(name, 0.0)
             lines.append(f"    {name:30s}  ΔBIC={dbic:+7.1f}  weight={weight:.3f}")
-        lines.append(f"{'─'*55}")
+        lines.append(f"{'─' * 55}")
         return "\n".join(lines)
 
 
@@ -92,11 +93,7 @@ class TemplateRetrieval:
     constraints, (3) model comparison statistics.
 
     The retrieval is essentially a grid search over the parameter space
-    defined by the TemplateGrid. For each template, we compute:
-        chi2 = sum_lambda [ (D_obs(lambda) - D_model(lambda))^2 / sigma^2(lambda) ]
-
-    And then rank models by chi2 (= maximum likelihood), BIC, and
-    derive Bayesian model weights via the Schwarz approximation.
+    defined by the TemplateGrid.
     """
 
     def __init__(self, grid: TemplateGrid):
@@ -115,7 +112,8 @@ class TemplateRetrieval:
             wavelengths_obs,
             template.wavelengths_um,
             template.transit_depth_ppm,
-            left=np.nan, right=np.nan,
+            left=np.nan,
+            right=np.nan,
         )
 
     def _chi2(
@@ -128,9 +126,11 @@ class TemplateRetrieval:
         """Compute chi-squared statistic."""
         if mask is None:
             mask = np.ones(len(observed), dtype=bool)
-        valid = mask & np.isfinite(model) & np.isfinite(observed) & (errors > 0)
+
+        valid = mask & np.isfinite(model) & np.isfinite(observed) & np.isfinite(errors) & (errors > 0)
         if valid.sum() < 3:
             return np.inf
+
         residuals = observed[valid] - model[valid]
         return float(np.sum((residuals / errors[valid]) ** 2))
 
@@ -139,9 +139,42 @@ class TemplateRetrieval:
         Bayesian Information Criterion (BIC).
         BIC = chi2 + k * ln(n)  (for Gaussian errors, BIC = -2*ln(L) + k*ln(n))
         Lower BIC = preferred model.
-        Each template has k=1 free parameter (overall depth normalization).
         """
         return chi2 + n_params * np.log(n_data)
+
+    def _fit_template(
+        self,
+        observed_depth_ppm: np.ndarray,
+        noise_ppm: np.ndarray,
+        model_depth_ppm: np.ndarray,
+        mask: np.ndarray,
+    ) -> Tuple[float, float, np.ndarray]:
+        """
+        Fit a single template with one free multiplicative scale factor.
+
+        Returns:
+            chi2, scale, best_fit_model_ppm
+        """
+        valid = mask & np.isfinite(model_depth_ppm) & np.isfinite(observed_depth_ppm) & np.isfinite(noise_ppm) & (noise_ppm > 0)
+        if valid.sum() < 3:
+            return np.inf, np.nan, np.full_like(observed_depth_ppm, np.nan)
+
+        obs_v = observed_depth_ppm[valid]
+        mod_v = model_depth_ppm[valid]
+        err_v = noise_ppm[valid]
+        w = 1.0 / (err_v ** 2)
+
+        denom = np.sum((mod_v ** 2) * w)
+        if denom <= 0:
+            return np.inf, np.nan, np.full_like(observed_depth_ppm, np.nan)
+
+        numer = np.sum(mod_v * obs_v * w)
+        scale = numer / denom
+        scale = float(np.clip(scale, 0.0, np.inf))
+
+        best_model = scale * model_depth_ppm
+        chi2 = self._chi2(observed_depth_ppm, best_model, noise_ppm, mask=mask)
+        return chi2, scale, best_model
 
     def fit(
         self,
@@ -152,78 +185,67 @@ class TemplateRetrieval:
     ) -> RetrievalResult:
         """
         Fit all templates in the grid to the observed spectrum.
-
-        Parameters
-        ----------
-        wavelengths_obs   : observed wavelength array [μm]
-        observed_depth_ppm: observed transit depths [ppm]
-        noise_ppm         : 1-sigma error per bin [ppm]
-        wavelength_range  : optional (wl_min, wl_max) to restrict fit range
-
-        Returns
-        -------
-        RetrievalResult with full model comparison statistics
         """
-        # Build wavelength mask
         if wavelength_range is not None:
             mask = (
-                (wavelengths_obs >= wavelength_range[0]) &
-                (wavelengths_obs <= wavelength_range[1]) &
-                (noise_ppm > 0) & (noise_ppm < 1e5)
+                (wavelengths_obs >= wavelength_range[0])
+                & (wavelengths_obs <= wavelength_range[1])
+                & np.isfinite(observed_depth_ppm)
+                & np.isfinite(noise_ppm)
+                & (noise_ppm > 0)
+                & (noise_ppm < 1e5)
             )
         else:
-            mask = (noise_ppm > 0) & (noise_ppm < 1e5)
+            mask = (
+                np.isfinite(observed_depth_ppm)
+                & np.isfinite(noise_ppm)
+                & (noise_ppm > 0)
+                & (noise_ppm < 1e5)
+            )
 
         n_data = int(mask.sum())
+        if n_data < 3:
+            raise ValueError("Not enough valid data points to perform retrieval.")
+
         n_params = 1  # one free parameter per template: depth normalization scale
 
         # Flat spectrum chi2 (null hypothesis: no atmosphere)
-        flat_depth = np.median(observed_depth_ppm[mask])
+        flat_depth = float(np.median(observed_depth_ppm[mask]))
         flat_model = np.full_like(observed_depth_ppm, flat_depth)
         flat_chi2 = self._chi2(observed_depth_ppm, flat_model, noise_ppm, mask)
 
         # Fit all templates
         all_chi2: Dict[str, List[Tuple[float, AtmosphereTemplate]]] = {}
         best_chi2 = np.inf
-        best_template = None
-        best_model_ppm = None
+        best_template: Optional[AtmosphereTemplate] = None
+        best_model_ppm: Optional[np.ndarray] = None
 
-        def fit_vectorized(self, wavelengths_obs, observed_depth_ppm, noise_ppm,
-                    wavelength_range=None):
-    mask = (noise_ppm > 0) & (noise_ppm < 1e5)
-    if wavelength_range is not None:
-        mask &= (wavelengths_obs >= wavelength_range[0]) & (wavelengths_obs <= wavelength_range[1])
+        for atm_name, template_list in self.grid.templates.items():
+            ranked: List[Tuple[float, AtmosphereTemplate]] = []
 
-    results = {}
-    for atm_name, template_list in self.grid.templates.items():
-        # (n_templates, n_wl_native) -> interpolate ALL templates onto obs grid at once
-        depths = np.stack([t.transit_depth_ppm for t in template_list])          # (K, Nn)
-        wl_native = template_list[0].wavelengths_um                             # shared axis
-        # vectorized interp: np.interp only does 1-D, so loop here is over K (cheap, no
-        # per-call chi2/scale work) OR use np.apply_along_axis with a single call amortized;
-        # for a strictly single-call vectorized version, precompute once per unique native grid:
-        model = np.vstack([np.interp(wavelengths_obs, wl_native, d) for d in depths])  # (K, No)
+            for template in template_list:
+                model = self._interpolate_template(template, wavelengths_obs)
+                chi2, _, best_fit_model = self._fit_template(
+                    observed_depth_ppm=observed_depth_ppm,
+                    noise_ppm=noise_ppm,
+                    model_depth_ppm=model,
+                    mask=mask,
+                )
+                ranked.append((chi2, template))
 
-        valid = mask & np.all(np.isfinite(model), axis=0)
-        obs_v, err_v = observed_depth_ppm[valid], noise_ppm[valid]
-        mod_v = model[:, valid]                                                  # (K, Nv)
-        w = 1.0 / err_v**2
+                if chi2 < best_chi2:
+                    best_chi2 = chi2
+                    best_template = template
+                    best_model_ppm = best_fit_model
 
-        denom  = np.einsum('kj,j->k', mod_v**2, w)
-        numer  = np.einsum('kj,j,j->k', mod_v, obs_v, w)
-        scale  = np.clip(numer / np.maximum(denom, 1e-30), 0.5, 2.0)             # (K,)
-        resid  = obs_v[None, :] - scale[:, None] * mod_v
-        chi2   = np.einsum('kj,j->k', resid**2, w)                              # (K,)
+            ranked.sort(key=lambda item: item[0])
+            all_chi2[atm_name] = ranked
 
-        best_i = np.argmin(chi2)
-        results[atm_name] = (chi2, best_i, scale[best_i], template_list[best_i])
-    return results
-
-        if best_template is None:
+        if best_template is None or best_model_ppm is None:
             raise RuntimeError("No templates could be fit. Check grid and data overlap.")
 
         # BIC for each atmosphere type (using best chi2 within each type)
-        bic_scores = {}
+        bic_scores: Dict[str, float] = {}
         for atm_name, ranked in all_chi2.items():
             if ranked:
                 best_type_chi2 = ranked[0][0]
@@ -232,15 +254,16 @@ class TemplateRetrieval:
         best_bic = min(bic_scores.values())
         delta_bic = {name: bic - best_bic for name, bic in bic_scores.items()}
 
-        # Bayesian model weights: w_i = exp(-0.5 * delta_BIC_i) / sum(exp(-0.5*delta_BIC))
+        # Bayesian model weights
         raw_weights = {name: np.exp(-0.5 * dbic) for name, dbic in delta_bic.items()}
         total_weight = sum(raw_weights.values())
-        model_weights = {name: w / total_weight for name, w in raw_weights.items()}
+        if total_weight <= 0:
+            model_weights = {name: 0.0 for name in raw_weights}
+        else:
+            model_weights = {name: w / total_weight for name, w in raw_weights.items()}
 
         # Detection SNR: how much better is best-fit vs flat?
-        # Using delta-chi2 → sigma via Wilks' theorem approximation
         delta_chi2_flat = flat_chi2 - best_chi2
-        # For a 1-parameter model: delta_chi2 ~ chi2_1, sigma = sqrt(delta_chi2)
         detection_snr = float(np.sqrt(max(delta_chi2_flat, 0.0)))
 
         n_dof = max(n_data - n_params, 1)
@@ -265,9 +288,9 @@ class TemplateRetrieval:
 
     def confusion_matrix(
         self,
-        sim_results: list,  # List[ObservationResult] from observation_sim
+        sim_results: List[object],  # List[ObservationResult] from observation_sim
         verbose: bool = True,
-    ) -> np.ndarray:
+    ) -> Tuple[np.ndarray, List[str]]:
         """
         Compute retrieval confusion matrix over a set of simulated observations.
 
@@ -283,23 +306,24 @@ class TemplateRetrieval:
         matrix = np.zeros((n_types, n_types), dtype=int)
 
         for i, obs in enumerate(sim_results):
-            if obs.noise_ppm is None:
+            if getattr(obs, "noise_ppm", None) is None:
                 continue
+
             try:
                 result = self.fit(
                     obs.wavelengths_um,
                     obs.observed_depth_ppm,
                     obs.noise_ppm,
                 )
-                true_idx = idx.get(obs.atmosphere_type, -1)
-                ret_idx  = idx.get(result.preferred_atmosphere, -1)
+                true_idx = idx.get(getattr(obs, "atmosphere_type", ""), -1)
+                ret_idx = idx.get(result.preferred_atmosphere, -1)
                 if true_idx >= 0 and ret_idx >= 0:
                     matrix[true_idx, ret_idx] += 1
             except Exception:
                 pass
 
             if verbose and (i + 1) % 20 == 0:
-                print(f"  Confusion matrix: {i+1}/{len(sim_results)} done")
+                print(f"  Confusion matrix: {i + 1}/{len(sim_results)} done")
 
         return matrix, type_names
 
@@ -309,16 +333,15 @@ class TemplateRetrieval:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import sys
-    sys.path.insert(0, os.path.dirname(__file__))
-    from atmosphere_templates import TemplateGrid, default_wavelength_grid
+    from atmosphere_templates import default_wavelength_grid, build_earth_like_template
     from observation_sim import ObservationSimulator, PlanetSystem
     from instrument_model import load_jwst_nirspec
 
     print("Building template grid for retrieval demo...")
     grid = TemplateGrid()
     grid.build_grid(
-        planet_radius_re=0.92, star_radius_rs=0.1192,
+        planet_radius_re=0.92,
+        star_radius_rs=0.1192,
         cloud_fractions=[0.0, 0.3, 0.6],
         scale_heights_km=[7.0, 8.5, 10.0],
     )
@@ -328,11 +351,14 @@ if __name__ == "__main__":
     sim = ObservationSimulator(jwst, rng=np.random.default_rng(42))
     planet = PlanetSystem.trappist1e()
 
-    from atmosphere_templates import build_earth_like_template
     wl = default_wavelength_grid()
     true_tmpl = build_earth_like_template(
-        wl, cloud_fraction=0.5, o2_ch4_ratio=1.0, scale_height_km=8.5,
-        planet_radius_re=0.92, star_radius_rs=0.1192,
+        wl,
+        cloud_fraction=0.5,
+        o2_ch4_ratio=1.0,
+        scale_height_km=8.5,
+        planet_radius_re=0.92,
+        star_radius_rs=0.1192,
     )
 
     print("Simulating observation (10 transits)...")
