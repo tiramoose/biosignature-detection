@@ -165,31 +165,29 @@ def _run_one_trial(
 
 
 def _run_planet_batch(
-    planets: List[SyntheticPlanet],
-    atm_names: List[str],
-    cloud_fracs: List[float],
-    scale_heights: List[float],
-    n_transits_list: List[int],
-    seeds: List[int],
-    instrument_name: str,
+    planets, atm_names, cloud_fracs, scale_heights, n_transits_list, seeds, instrument_name,
 ) -> List[MCTrial]:
     """Process a batch of planets (called by each parallel worker)."""
+    # Build the instrument ONCE per batch, not once per trial — it's identical
+    # every call (same fixed config), so the original code was reconstructing
+    # it n_trials times for zero benefit. Requires threading `instrument` into
+    # _run_one_trial as a parameter instead of a name string; trivial change.
+    instrument = load_miri_lrs() if instrument_name == "miri_lrs" else load_jwst_nirspec()
+
     trials = []
+    failures = []
     for i, planet in enumerate(planets):
-        atm = atm_names[i]
-        cf  = cloud_fracs[i]
-        sh  = scale_heights[i]
+        atm, cf, sh = atm_names[i], cloud_fracs[i], scale_heights[i]
         for n_t in n_transits_list:
             try:
-                trial = _run_one_trial(
-                    planet, atm, cf, sh, n_t, seeds[i], instrument_name
-                )
+                trial = _run_one_trial(planet, atm, cf, sh, n_t, seeds[i], instrument=instrument)
                 trials.append(trial)
             except Exception as e:
-                failures.append((planet.planet_id, atm, str(e)))
-...
-        if failures:
-            print(f"WARNING: {len(failures)} trials failed silently — see failures[] for detail")
+                failures.append((planet.planet_id, atm, n_t, repr(e)))
+
+    if failures:
+        print(f"  WARNING: {len(failures)}/{len(planets)*len(n_transits_list)} trials failed "
+              f"and were skipped. First 3: {failures[:3]}")
     return trials
 
 
