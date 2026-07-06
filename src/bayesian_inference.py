@@ -106,10 +106,11 @@ class BayesianRetrieval:
     """
 
     PARAM_RANGES = {
-        "cloud_fraction":  (0.0, 0.9),
-        "scale_height_km": (5.0, 13.0),
-        "log_o2_ch4":      (-4.0, 1.0),   # log10 of ratio
-    }
+    "cloud_fraction":  (0.0, 0.9),
+    "scale_height_km": (5.0, 13.0),
+    "log_o2_ch4":      (-4.0, 1.0),
+    "log_amp_scale":   (-0.7, 0.7),   # New dimension: ln(0.5) .. ln(2.0)
+}
 
     BUILDERS = {
         "earth_like":          build_earth_like_template,
@@ -131,28 +132,34 @@ class BayesianRetrieval:
 
     def _prior_transform(self, u: np.ndarray) -> np.ndarray:
         """Map unit hypercube → physical parameter space."""
-        cf_lo, cf_hi   = self.PARAM_RANGES["cloud_fraction"]
-        sh_lo, sh_hi   = self.PARAM_RANGES["scale_height_km"]
-        lo_lo, lo_hi   = self.PARAM_RANGES["log_o2_ch4"]
+        cf_lo, cf_hi  = self.PARAM_RANGES["cloud_fraction"]
+        sh_lo, sh_hi  = self.PARAM_RANGES["scale_height_km"]
+        lo_lo, lo_hi  = self.PARAM_RANGES["log_o2_ch4"]
+        as_lo, as_hi  = self.PARAM_RANGES["log_amp_scale"]  # Add this
         return np.array([
             cf_lo + u[0] * (cf_hi - cf_lo),
             sh_lo + u[1] * (sh_hi - sh_lo),
             lo_lo + u[2] * (lo_hi - lo_lo),
+            as_lo + u[3] * (as_hi - as_lo),  # Add this
         ])
 
-    def _log_likelihood(
-        self,
-        params: np.ndarray,
-        builder,
-        observed: np.ndarray,
-        errors:   np.ndarray,
-        wl_obs:   np.ndarray,
-        p_re: float,
-        s_rs: float,
-    ) -> float:
-        """Gaussian log-likelihood for a given parameter vector."""
-        cf, sh, log_ratio = params
+    def _log_likelihood(self, params, builder, observed, errors, wl_obs, p_re, s_rs):
+        # Unpack the 4 parameters
+        cf, sh, log_ratio, log_amp_scale = params
         o2_ch4 = 10.0 ** log_ratio
+        
+        # Remove np.clip from the scale calculation
+        scale = np.exp(log_amp_scale) 
+
+        try:
+            # ... (keep your existing builder call here) ...
+            
+            # Use the 'scale' variable in your residuals
+            residuals = obs_v - scale * mod_v
+            log_l = -0.5 * np.sum((residuals / err_v)**2 + np.log(2 * np.pi * err_v**2))
+            return float(log_l)
+        except Exception:
+            return -1e30
 
         try:
             tmpl = builder(
@@ -204,9 +211,10 @@ class BayesianRetrieval:
         return float(log_z), 0.0
 
     def run_fiducial(
-        self,
-        n_transits: int = 10,
-        atm_types: Optional[list] = None,
+        log_like,
+        prior_transform,
+        ndim=4,  # Change this from 3 to 4
+        nlive=self.n_live,
     ) -> BayesianComparison:
         """
         Run nested sampling for all atmosphere models on the fiducial planet.
@@ -298,8 +306,8 @@ class BayesianRetrieval:
             # Posterior samples (weighted)
             weights = np.exp(res.logwt - res.logz[-1])
             weights = weights / weights.sum()
-            idx = np.random.choice(len(weights), size=min(500, len(weights)),
-                                   p=weights, replace=False)
+            rng = np.random.default_rng(self.rng_seed)
+            idx = rng.choice(len(weights), size=min(500, len(weights)), p=weights, replace=False)
             samples = res.samples[idx]  # (N, 3)
 
             # MAP parameter estimates
@@ -323,9 +331,8 @@ class BayesianRetrieval:
                 log_evidence_err=log_z_err,
                 best_params=best_params,
                 posterior_samples=samples,
-                param_names=["cloud_fraction", "scale_height_km", "log_o2_ch4"],
-            )
-
+                param_names=["cloud_fraction", "scale_height_km", "log_o2_ch4", "log_amp_scale"],            )
+)
         # ── Null model (flat spectrum) ──
         null_lnz, _ = self._null_log_evidence(obs_dep, obs_err)
         print(f"\n  Null model (flat): ln Z = {null_lnz:.2f}")
