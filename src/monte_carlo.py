@@ -5,6 +5,7 @@ def _run_one_trial(
     scale_height_km: float,
     n_transits: int,
     seed: int,
+    *,
     instrument=None,
     instrument_name: str = "jwst_nirspec",
 ) -> MCTrial:
