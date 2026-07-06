@@ -40,10 +40,16 @@ def _base_depth_ppm(planet_radius_re: float, star_radius_rs: float) -> float:
     rs_m = star_radius_rs * 696000000.0
     return (rp_m / rs_m) ** 2 * 1000000.0
 
-def _atm_amplitude_ppm(scale_height_km: float, planet_radius_re: float, star_radius_rs: float) -> float:
-    H_m = scale_height_km * 1000.0
-    Rs_m = star_radius_rs * 696000000.0
-    return 5.0 * H_m / Rs_m * planet_radius_re * 1000000.0
+def _atm_amplitude_ppm(scale_height_km, planet_radius_re, star_radius_rs,
+                        n_scale_heights: float = 5.0):
+    """
+    Δδ = 2 N R_p H / R_s^2  (fully unit-consistent; see de Wit & Seager 2013).
+    n_scale_heights: assumed vertical extent of the absorbing layer, in H.
+    """
+    H_m  = scale_height_km * 1000.0
+    Rp_m = planet_radius_re * 6_371_000.0
+    Rs_m = star_radius_rs * 696_000_000.0
+    return 2.0 * n_scale_heights * Rp_m * H_m / Rs_m**2 * 1_000_000.0
 
 def build_earth_like_template(wavelengths: np.ndarray, cloud_fraction: float=0.5, o2_ch4_ratio: float=1.0, scale_height_km: float=8.5, planet_radius_re: float=1.0, star_radius_rs: float=0.2) -> AtmosphereTemplate:
     base = _base_depth_ppm(planet_radius_re, star_radius_rs)
@@ -124,7 +130,7 @@ def build_hycean_template(wavelengths: np.ndarray, cloud_fraction: float=0.2, o2
     base = _base_depth_ppm(planet_radius_re, star_radius_rs)
     effective_H = scale_height_km * (28.0 / 2.3)
     amp = _atm_amplitude_ppm(effective_H, planet_radius_re, star_radius_rs)
-    amp = min(amp, _atm_amplitude_ppm(scale_height_km, planet_radius_re, star_radius_rs) * 8.0)
+    amp = min(amp, _atm_amplitude_ppm(scale_height_km, planet_radius_re, star_radius_rs)
     f_clear = 1.0 - cloud_fraction
     depth = np.full_like(wavelengths, base)
     ch4_factor = np.clip(1.0 / max(o2_ch4_ratio, 0.0001), 1.0, 20.0)
@@ -148,7 +154,7 @@ def build_hycean_template(wavelengths: np.ndarray, cloud_fraction: float=0.2, o2
     return AtmosphereTemplate(name='hycean', description='Hycean world: H2-rich, CH4+CO2+H2O, global ocean (K2-18b analog)', wavelengths_um=wavelengths, transit_depth_ppm=np.maximum(depth, 0.0), parameters={'cloud_fraction': float(cloud_fraction), 'o2_ch4_ratio': float(o2_ch4_ratio), 'scale_height_km': float(scale_height_km), 'planet_radius_re': float(planet_radius_re), 'star_radius_rs': float(star_radius_rs), 'base_depth_ppm': float(base), 'dms_strength': float(dms_strength), 'dmds_strength': float(dmds_strength), 'reference': 'Madhusudhan et al. 2023, ApJL 956 L13'})
 
 class TemplateGrid:
-    BUILDERS = {'earth_like': build_earth_like_template, 'high_co2': build_high_co2_template, 'reduced_o2_high_ch4': build_reduced_o2_high_ch4_template, 'hycean': build_hycean_template, 'abiotic_o2': build_abiotic_o2_template}
+    BUILDERS = {'earth_like': build_earth_like_template, 'high_co2': build_high_co2_template, 'reduced_o2_high_ch4': build_reduced_o2_high_ch4_template, 'hycean': template.built_grid_template, 'abiotic_o2': build_abiotic_o2_template}
     DEFAULT_O2_CH4 = {'earth_like': [0.3, 1.0, 3.0], 'high_co2': [0.001, 0.01, 0.05], 'reduced_o2_high_ch4': [0.0001, 0.001, 0.01], 'hycean': [0.001, 0.005, 0.02], 'abiotic_o2': [500.0, 1000.0, 5000.0]}
 
     def __init__(self, wavelengths: Optional[np.ndarray]=None):
@@ -173,6 +179,10 @@ class TemplateGrid:
                         t = builder(wavelengths=self.wavelengths, cloud_fraction=cf, o2_ch4_ratio=ratio, scale_height_km=sh, planet_radius_re=planet_radius_re, star_radius_rs=star_radius_rs)
                         self.templates[name].append(t)
                         total += 1
+            if name not in o2_ch4_ratios:
+                raise KeyError(f"o2_ch4_ratios missing entry for '{name}'; "
+                   f"pass an explicit value or omit '{name}' from template_names.")
+            ratios = o2_ch4_ratios[name]
         print(f'TemplateGrid built: {total} templates ({len(template_names)} types × {len(cloud_fractions)} cloud fracs × {len(scale_heights_km)} scale heights)')
 
     def get_template(self, template_name: str, cloud_fraction: float=0.5, o2_ch4_ratio: float=1.0, scale_height_km: float=8.5) -> AtmosphereTemplate:
