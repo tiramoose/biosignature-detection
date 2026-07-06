@@ -6,6 +6,8 @@ import argparse
 from dataclasses import dataclass, asdict
 from typing import List, Dict
 
+RUNAWAY_GH_COEFFS = [1.0385, 1.2456e-4, 1.4612e-8, -7.6345e-12, -1.7511e-15]
+MAX_GH_COEFFS = [0.3507, 5.9578e-5, 1.6707e-9, -3.0058e-12, -5.1925e-16]
 
 # ---------------------------------------------------------------------------
 # Planet + star dataclasses
@@ -106,14 +108,18 @@ def _equilibrium_temp(star_luminosity_lsun: float, distance_au: float, albedo: f
     return T_eq
 
 
-def _habitable_zone(star_luminosity_lsun: float) -> tuple:
-    """
-    Kopparapu et al. (2013) empirical HZ limits.
-    Returns (inner_au, outer_au).
-    """
-    inner_au = 0.95 * np.sqrt(star_luminosity_lsun)
-    outer_au = 1.67 * np.sqrt(star_luminosity_lsun)
-    return inner_au, outer_au
+def _seff(teff_k, coeffs):
+    """Calculates effective stellar flux based on star temperature."""
+    Ts = teff_k - 5780.0
+    Seff0, a, b, c, d = coeffs
+    return Seff0 + a*Ts + b*Ts**2 + c*Ts**3 + d*Ts**4
+
+def _habitable_zone(star_luminosity_lsun, star_teff_k,
+                     runaway_gh_coeffs, max_gh_coeffs):
+    """Calculates HZ boundaries using Kopparapu et al. (2013) coefficients."""
+    S_inner = _seff(star_teff_k, runaway_gh_coeffs)
+    S_outer = _seff(star_teff_k, max_gh_coeffs)
+    return np.sqrt(star_luminosity_lsun / S_inner), np.sqrt(star_luminosity_lsun / S_outer)
 
 
 def _j_magnitude(distance_pc: float, star_type: str, star_radius_rs: float) -> float:
@@ -196,7 +202,12 @@ def generate_population(config: PopulationConfig) -> List[SyntheticPlanet]:
         radius = float(np.clip(radius, 0.5, 4.5))
 
         # --- Habitable zone check ---
-        hz_inner, hz_outer = _habitable_zone(star_props["luminosity"])
+        hz_inner, hz_outer = _habitable_zone(
+            star_luminosity_lsun=star_props["luminosity"],
+            star_teff_k=teff,
+            runaway_gh_coeffs=RUNAWAY_GH_COEFFS,
+            max_gh_coeffs=MAX_GH_COEFFS
+        )
         in_hz = hz_inner <= a_au <= hz_outer
 
         # --- Derived quantities ---
