@@ -1,11 +1,16 @@
-import numpy as np
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
+
 sys.path.insert(0, os.path.dirname(__file__))
-from atmosphere_templates import AtmosphereTemplate, get_default_templates, default_wavelength_grid
+from atmosphere_templates import (
+    AtmosphereTemplate,
+    default_wavelength_grid,
+    get_default_templates,
+)
 from instrument_model import InstrumentModel, load_jwst_nirspec
 
 
@@ -23,15 +28,15 @@ class PlanetSystem:
     (sets transit depth), and the transit geometry (sets how long you
     collect in-transit light per orbit).
     """
-    planet_name:           str
-    star_teff_k:           float   # Stellar effective temperature [K]
-    star_radius_rs:        float   # Stellar radius [solar radii]
-    star_magnitude_j:      float   # J-band apparent magnitude (brightness)
-    planet_radius_re:      float   # Planet radius [Earth radii]
-    orbital_period_days:   float
+    planet_name: str
+    star_teff_k: float
+    star_radius_rs: float
+    star_magnitude_j: float
+    planet_radius_re: float
+    orbital_period_days: float
     transit_duration_hours: float
-    distance_pc:           float
-    equilibrium_temp_k:    float   # Planet equilibrium temperature [K]
+    distance_pc: float
+    equilibrium_temp_k: float
 
     @property
     def transit_duration_s(self) -> float:
@@ -115,9 +120,14 @@ class PlanetSystem:
         )
 
     @classmethod
-    def synthetic(cls, distance_pc: float, star_teff_k: float = 3000.0,
-                  star_radius_rs: float = 0.2, planet_radius_re: float = 1.0,
-                  j_mag_at_10pc: float = 12.0) -> "PlanetSystem":
+    def synthetic(
+        cls,
+        distance_pc: float,
+        star_teff_k: float = 3000.0,
+        star_radius_rs: float = 0.2,
+        planet_radius_re: float = 1.0,
+        j_mag_at_10pc: float = 12.0,
+    ) -> "PlanetSystem":
         """
         Create a generic synthetic planet at arbitrary distance.
         Used for detection-horizon sweeps.
@@ -149,69 +159,25 @@ class ObservationResult:
     Contains the true input spectrum, the noisy observed spectrum,
     the noise budget, and pre-computed SNR metrics.
     """
-    planet:          PlanetSystem
+    planet: PlanetSystem
     atmosphere_type: str
-    n_transits:      int
+    n_transits: int
     instrument_name: str
 
-    wavelengths_um:      np.ndarray  # wavelength grid [μm]
-    true_depth_ppm:      np.ndarray  # noiseless template depth [ppm]
-    observed_depth_ppm:  np.ndarray  # noisy observed depth [ppm]
-    noise_ppm:           np.ndarray  # 1σ noise per spectral bin [ppm]
-    snr_per_bin:         np.ndarray  # per-bin SNR (spectral modulation / noise)
-    noise_budget:        Dict[str, np.ndarray]  # raw electron-space noise budget
-    baseline_ppm:        float = 0.0  # flat (Rp/Rs)^2 continuum depth, no atmosphere info
+    wavelengths_um: np.ndarray
+    true_depth_ppm: np.ndarray
+    observed_depth_ppm: np.ndarray
+    noise_ppm: np.ndarray
+    snr_per_bin: np.ndarray
+    noise_budget: Dict[str, np.ndarray]
+    baseline_ppm: float = 0.0
 
     @property
-
-    def simulate_batch(
-    self,
-    planet: PlanetSystem,
-    template: AtmosphereTemplate,
-    n_transits: int,
-    n_trials: int,
-    rng: Optional[np.random.Generator] = None,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Draw n_trials independent noise realizations for the SAME
-    (planet, template, n_transits) in one vectorized call, instead of
-    calling simulate() n_trials times and recomputing the deterministic
-    photon-rate / noise-budget calculation on every iteration.
-
-    Returns
-    -------
-    observed : (n_trials, n_wl) noisy depth spectra [ppm]
-    noise_ppm: (n_wl,) per-bin 1-sigma noise (same for every trial)
-    true_depth:(n_wl,) noiseless template depth [ppm]
-    """
-    rng = rng if rng is not None else self.rng
-    wl = template.wavelengths_um
-    true_depth = template.transit_depth_ppm
-
-    photon_rate = self.instrument.stellar_photon_rate(
-        wl, star_magnitude_j=planet.star_magnitude_j, star_teff_k=planet.star_teff_k,
-    )
-    total_transit_s = planet.transit_duration_s * n_transits
-    n_exp = max(1, int(total_transit_s / self.exposure_time_s))
-    budget = self.instrument.noise_model(photon_rate, self.exposure_time_s, n_exp)
-
-    sig = budget["signal_e"]
-    noise_ppm = np.where(sig > 1.0, budget["total_noise"] / sig * 1e6, 1e6)
-    inst = self.instrument.config
-    in_range = (wl >= inst.wavelength_min_um) & (wl <= inst.wavelength_max_um)
-    noise_ppm = np.where(in_range, noise_ppm, 1e6)
-
-    # single vectorized draw instead of n_trials separate rng.normal() calls
-    noise_draws = rng.normal(0.0, noise_ppm, size=(n_trials, len(wl)))
-    observed = true_depth[None, :] + noise_draws
-    return observed, noise_ppm, true_depth
-  
     def detection_snr(self) -> float:
         """
         Broadband detection SNR via matched filter (quadrature over all bins).
         This is the SNR for detecting spectral modulation vs. a flat spectrum,
         i.e. the atmosphere-only signal above the featureless (Rp/Rs)^2 baseline.
-        Threshold for detection: SNR ≥ 5σ.
         """
         return float(np.sqrt(np.nansum(self.snr_per_bin ** 2)))
 
@@ -231,13 +197,13 @@ class ObservationResult:
         Returns dict of feature_name → integrated SNR.
         """
         windows = {
-            "O2_A_band":   (0.74, 0.79),    # sharpest O2 feature
-            "H2O_1.4um":   (1.30, 1.47),    # strong water band
-            "H2O_1.9um":   (1.80, 1.95),    # water band
-            "CH4_1.7um":   (1.60, 1.75),    # methane
-            "CH4_2.3um":   (2.15, 2.50),    # strong methane
-            "CO2_4.3um":   (4.00, 4.65),    # dominant CO2 band
-            "CO2_2.0um":   (1.90, 2.10),    # CO2
+            "O2_A_band": (0.74, 0.79),
+            "H2O_1.4um": (1.30, 1.47),
+            "H2O_1.9um": (1.80, 1.95),
+            "CH4_1.7um": (1.60, 1.75),
+            "CH4_2.3um": (2.15, 2.50),
+            "CO2_4.3um": (4.00, 4.65),
+            "CO2_2.0um": (1.90, 2.10),
         }
         results = {}
         for name, (lo, hi) in windows.items():
@@ -252,8 +218,8 @@ class ObservationResult:
     def median_noise_ppm(self) -> float:
         """Median noise per spectral bin across the full bandpass."""
         valid = self.noise_ppm[
-            (self.wavelengths_um >= 0.6) &
-            (self.noise_ppm < 1e5)
+            (self.wavelengths_um >= 0.6)
+            & (self.noise_ppm < 1e5)
         ]
         return float(np.median(valid)) if len(valid) > 0 else float(np.median(self.noise_ppm))
 
@@ -261,19 +227,21 @@ class ObservationResult:
         bio = self.biosignature_snr
         detected = "✓ DETECTED" if self.is_detected else "✗ not detected"
         lines = [
-            f"{'─'*55}",
+            f"{'─' * 55}",
             f"  Planet     : {self.planet.planet_name}",
             f"  Atmosphere : {self.atmosphere_type}",
             f"  Instrument : {self.instrument_name}",
             f"  N transits : {self.n_transits}",
             f"  Broadband SNR : {self.detection_snr:.1f}σ  [{detected}]",
             f"  Median noise  : {self.median_noise_ppm:.0f} ppm/bin",
-            f"  Biosignature feature SNRs:",
+            "  Biosignature feature SNRs:",
         ]
         for feat, snr in bio.items():
-            bar = "█" * int(min(snr, 20)) + ("" if snr < 5 else " ← detectable" if snr >= 5 else "")
+            bar = "█" * int(min(snr, 20))
+            if snr >= 5:
+                bar += " ← detectable"
             lines.append(f"    {feat:16s}: {snr:5.1f}σ  {bar}")
-        lines.append(f"{'─'*55}")
+        lines.append(f"{'─' * 55}")
         return "\n".join(lines)
 
 
@@ -289,15 +257,15 @@ class ObservationSimulator:
       planet + atmosphere template + instrument → ObservationResult
 
     Also provides:
-      run_grid()         — batch over planets × templates × n_transits
-      detection_horizon()— SNR vs. distance curve for a given template
+      run_grid()          — batch over planets × templates × n_transits
+      detection_horizon() — SNR vs. distance curve for a given template
     """
 
     def __init__(
         self,
         instrument: InstrumentModel,
         rng: Optional[np.random.Generator] = None,
-        exposure_time_s: float = 88.0,   # JWST NIRSpec default sub-array read time
+        exposure_time_s: float = 88.0,
     ):
         self.instrument = instrument
         self.rng = rng if rng is not None else np.random.default_rng()
@@ -312,22 +280,6 @@ class ObservationSimulator:
     ) -> ObservationResult:
         """
         Simulate a transit spectroscopy observation.
-
-        Steps:
-          1. Get stellar photon rate at each wavelength bin
-          2. Compute noise budget for total in-transit integration time
-          3. Convert noise to ppm units (relative to stellar flux)
-          4. Draw a noisy realization of the transit depth spectrum
-          5. Compute per-bin and integrated SNRs, using the spectral
-             modulation above the flat (Rp/Rs)^2 baseline (the baseline
-             itself carries no atmosphere information)
-
-        Parameters
-        ----------
-        planet     : host star + planet properties
-        template   : atmosphere model (wavelength-dependent transit depth)
-        n_transits : how many transit events are observed
-        verbose    : print noise budget to stdout
         """
         wl = template.wavelengths_um
         true_depth = template.transit_depth_ppm.copy()
@@ -350,7 +302,7 @@ class ObservationSimulator:
         noise_ppm = np.where(
             sig > 1.0,
             budget["total_noise"] / sig * 1e6,
-            1e6,  # assign large noise where there's no signal (out-of-band)
+            1e6,
         )
 
         # Mask out-of-instrument-range bins
@@ -372,14 +324,13 @@ class ObservationSimulator:
 
         if verbose:
             print(f"\n[simulate] {planet.planet_name} × {template.name} × {n_transits} transits")
-            print(f"  In-transit time   : {total_transit_s/3600:.1f} h  ({n_exp} exposures)")
-            wl_mid = np.argmin(np.abs(wl - 1.38))  # H2O 1.4μm window
-            print(f"  At 1.38 μm (H2O window):")
+            print(f"  In-transit time   : {total_transit_s / 3600:.1f} h  ({n_exp} exposures)")
+            wl_mid = np.argmin(np.abs(wl - 1.38))
+            print("  At 1.38 μm (H2O window):")
             print(f"    Photon rate  : {photon_rate[wl_mid]:.2e} ph/s/bin")
             print(f"    Signal       : {sig[wl_mid]:.2e} e⁻")
             print(f"    Shot noise   : {budget['shot_noise'][wl_mid]:.2e} e⁻")
-            print(f"    Total noise  : {budget['total_noise'][wl_mid]:.2e} e⁻  "
-                  f"({noise_ppm[wl_mid]:.0f} ppm)")
+            print(f"    Total noise  : {budget['total_noise'][wl_mid]:.2e} e⁻  ({noise_ppm[wl_mid]:.0f} ppm)")
 
         return ObservationResult(
             planet=planet,
@@ -395,6 +346,41 @@ class ObservationSimulator:
             baseline_ppm=baseline_ppm,
         )
 
+    def simulate_batch(
+        self,
+        planet: PlanetSystem,
+        template: AtmosphereTemplate,
+        n_transits: int,
+        n_trials: int,
+        rng: Optional[np.random.Generator] = None,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Draw n_trials independent noise realizations for the same
+        (planet, template, n_transits) in one vectorized call.
+        """
+        rng = rng if rng is not None else self.rng
+        wl = template.wavelengths_um
+        true_depth = template.transit_depth_ppm
+
+        photon_rate = self.instrument.stellar_photon_rate(
+            wl,
+            star_magnitude_j=planet.star_magnitude_j,
+            star_teff_k=planet.star_teff_k,
+        )
+        total_transit_s = planet.transit_duration_s * n_transits
+        n_exp = max(1, int(total_transit_s / self.exposure_time_s))
+        budget = self.instrument.noise_model(photon_rate, self.exposure_time_s, n_exp)
+
+        sig = budget["signal_e"]
+        noise_ppm = np.where(sig > 1.0, budget["total_noise"] / sig * 1e6, 1e6)
+        inst = self.instrument.config
+        in_range = (wl >= inst.wavelength_min_um) & (wl <= inst.wavelength_max_um)
+        noise_ppm = np.where(in_range, noise_ppm, 1e6)
+
+        noise_draws = rng.normal(0.0, noise_ppm, size=(n_trials, len(wl)))
+        observed = true_depth[None, :] + noise_draws
+        return observed, noise_ppm, true_depth
+
     def run_grid(
         self,
         planets: List[PlanetSystem],
@@ -405,8 +391,6 @@ class ObservationSimulator:
         """
         Run a grid of simulations over all combinations of:
           planets × atmosphere templates × n_transit counts.
-
-        Used to build detection-probability tables and survey yield estimates.
         """
         results = []
         total = len(planets) * len(templates) * len(n_transits_list)
@@ -418,9 +402,11 @@ class ObservationSimulator:
                     results.append(r)
                     i += 1
                     if i % verbose_every == 0 or i == total:
-                        print(f"  [{i:4d}/{total}] {planet.planet_name:20s} × "
-                              f"{atm_name:25s} × {n_t:3d} transits "
-                              f"→ SNR = {r.detection_snr:.1f}σ")
+                        print(
+                            f"  [{i:4d}/{total}] {planet.planet_name:20s} × "
+                            f"{atm_name:25s} × {n_t:3d} transits "
+                            f"→ SNR = {r.detection_snr:.1f}σ"
+                        )
         return results
 
     def detection_horizon(
@@ -436,15 +422,6 @@ class ObservationSimulator:
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Compute detection SNR as a function of stellar distance.
-
-        This produces the "detection horizon curve" — the main figure
-        in Section 3 of the paper. Shows the maximum distance at which
-        each atmosphere type can be characterized by JWST.
-
-        Returns
-        -------
-        distances_pc : input distance array (same as input)
-        snrs         : broadband detection SNR at each distance
         """
         snrs = []
         for d in distances_pc:
@@ -455,7 +432,7 @@ class ObservationSimulator:
                 planet_radius_re=planet_radius_re,
                 j_mag_at_10pc=j_mag_at_10pc,
             )
-            planet.transit_duration_hours = transit_duration_hours  # type: ignore
+            planet.transit_duration_hours = transit_duration_hours
             r = self.simulate(planet, template, n_transits)
             snrs.append(r.detection_snr)
         return distances_pc, np.array(snrs)
@@ -497,7 +474,6 @@ if __name__ == "__main__":
         result = sim.simulate(planet, tmpl, n_transits=10, verbose=False)
         print(result.summary())
 
-    # Detection horizon
     print("\nDetection horizon (earth_like, 10 transits, M-dwarf host):")
     distances = np.array([5, 10, 15, 20, 30, 40, 50])
     _, snrs = sim.detection_horizon(templates["earth_like"], distances, n_transits=10)
