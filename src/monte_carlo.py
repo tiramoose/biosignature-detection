@@ -186,7 +186,10 @@ def _run_planet_batch(
                 )
                 trials.append(trial)
             except Exception as e:
-                pass  # Skip failed trials silently
+                failures.append((planet.planet_id, atm, str(e)))
+...
+        if failures:
+            print(f"WARNING: {len(failures)} trials failed silently — see failures[] for detail")
     return trials
 
 
