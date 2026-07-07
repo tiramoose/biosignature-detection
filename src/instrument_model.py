@@ -1,36 +1,3 @@
-"""
-instrument_model.py
--------------------
-Models the JWST NIRSpec telescope + instrument response for
-transmission spectroscopy of transiting exoplanets.
-
-What this file does:
-  Given a host star's brightness and temperature, this module computes:
-  (1) How many photons per second JWST actually collects at each wavelength
-  (2) The noise budget: shot noise, read noise, dark current, sky background,
-      and the instrument's fundamental photometric stability floor (~20 ppm)
-  (3) The signal-to-noise ratio achievable for a transit of given depth
-
-  In short: atmosphere_templates.py says what the planet's spectrum LOOKS like.
-  instrument_model.py says how well JWST can MEASURE it.
-
-Where to put this file:
-  → biosignatures_project/src/instrument_model.py
-
-Config file it loads:
-  → biosignatures_project/config/instruments/jwst_nirspec.json
-  → biosignatures_project/config/instruments/elt_example.json
-
-Usage:
-    from instrument_model import load_jwst_nirspec
-    jwst = load_jwst_nirspec()
-    print(jwst.summary())
-
-    wl = np.linspace(0.6, 5.3, 300)
-    rate = jwst.stellar_photon_rate(wl, star_magnitude_j=11.35, star_teff_k=2566)
-    noise = jwst.noise_model(rate, exposure_time_s=100, n_exposures=500)
-"""
-
 import numpy as np
 import json
 import os
@@ -44,10 +11,6 @@ from typing import Dict, Tuple, Optional
 
 @dataclass
 class InstrumentConfig:
-    """
-    All the hardware numbers for one instrument mode.
-    Loaded from a JSON file in config/instruments/.
-    """
     name: str
     wavelength_min_um: float        # Blue wavelength cutoff [μm]
     wavelength_max_um: float        # Red wavelength cutoff [μm]
@@ -82,19 +45,6 @@ class InstrumentConfig:
 # ---------------------------------------------------------------------------
 
 class InstrumentModel:
-    """
-    Computes photon rates, noise sources, and SNR for transit spectroscopy.
-
-    The core calculation chain is:
-        stellar flux → photon rate → noise model → SNR per bin
-
-    Three noise regimes to be aware of:
-        1. Shot-noise limited (bright stars): noise ∝ sqrt(N_photons)
-        2. Read-noise limited (faint stars / short exposures): noise ∝ sqrt(N_reads)
-        3. Systematic floor (any star): noise floor set by instrument stability (~20 ppm)
-           This floor dominates for very bright targets with many transits.
-    """
-
     def __init__(self, config: InstrumentConfig):
         self.config = config
 
@@ -139,39 +89,6 @@ class InstrumentModel:
     # ------------------------------------------------------------------
 
     def stellar_sed_calibration(self, wavelengths_um: np.ndarray) -> np.ndarray:
-        """
-        Wavelength-dependent calibration factor correcting the blackbody
-        approximation toward real M-dwarf photospheric SEDs.
-
-        WHY THIS EXISTS:
-          A blackbody is a poor approximation to a real M-dwarf spectrum
-          longward of ~2 um, where photospheric H2O and CO molecular bands
-          suppress the emergent flux well below the blackbody prediction.
-          Cross-validation against the JWST ETC (Pandeia v3.0) for TRAPPIST-1
-          (Teff=2566K, J=11.35) shows our blackbody model agrees with ETC
-          photon rates to ~5-10% at J-band (1.25 um) but overestimates by
-          factors of ~1.5-2x at 2 um, ~3x at 3 um, and ~3-4x at 4.3 um.
-          See notebooks/instrument_validation.ipynb for the full derivation.
-
-        This function returns a smooth multiplicative correction, anchored
-        at 1.0 at 1.25 um (where the blackbody is accurate) and decreasing
-        toward longer wavelengths following the calibration factors derived
-        from ETC cross-validation. It is intentionally conservative (i.e. it
-        REDUCES claimed sensitivity), so applying it never overstates
-        detectability.
-
-        Calibration anchor points (wavelength_um: factor):
-            1.25 : 1.00   (ETC agreement, no correction)
-            2.00 : 0.70
-            3.00 : 0.40
-            4.30 : 0.30
-            5.30 : 0.28   (held flat beyond 4.3 um)
-
-        Returns
-        -------
-        calib : array of multiplicative factors, same shape as wavelengths_um,
-                to be multiplied onto the raw blackbody photon rate.
-        """
         anchor_wl  = np.array([0.6, 1.25, 2.0, 3.0, 4.3, 5.3])
         anchor_cal = np.array([1.00, 1.00, 0.70, 0.40, 0.30, 0.28])
         calib = np.interp(wavelengths_um, anchor_wl, anchor_cal)
@@ -184,26 +101,6 @@ class InstrumentModel:
         star_teff_k: float = 3500.0,
         apply_sed_calibration: bool = True,
     ) -> np.ndarray:
-        """
-        Stellar photon rate arriving at the detector [photons / s / spectral bin].
-
-        Method:
-          1. Compute a Planck blackbody SED for the star's Teff
-          2. Anchor the absolute flux to the J-band apparent magnitude
-          3. Multiply by spectral bin width, collecting area, and throughput
-          4. (Optional, default ON) Apply the ETC-derived SED calibration
-             correction from stellar_sed_calibration()
-
-        Parameters
-        ----------
-        wavelengths_um    : wavelength array [μm]
-        star_magnitude_j  : J-band (1.25 μm) apparent magnitude of the host star
-        star_teff_k       : stellar effective temperature [K]
-        apply_sed_calibration : if True (default), apply the wavelength-dependent
-            calibration correction derived from JWST ETC cross-validation
-            (see stellar_sed_calibration()). Set False only to reproduce the
-            uncalibrated pre-Week-7 numbers for comparison purposes.
-        """
         # --- Planck function B_λ (relative SED shape) ---
         h = 6.626e-34   # J·s
         c = 3.0e8       # m/s
@@ -263,35 +160,7 @@ class InstrumentModel:
         exposure_time_s: float,
         n_exposures: int = 1,
     ) -> Dict[str, np.ndarray]:
-        """
-        Full noise budget for a given observation.
-
-        Noise sources included:
-          - Shot noise: Poisson fluctuations in stellar photon counts
-          - Read noise: detector amplifier noise per read
-          - Dark current: thermally generated electrons
-          - Sky background: zodiacal dust emission (~0.1% of stellar flux)
-          - Stellar noise floor: instrument photometric stability limit (20 ppm)
-            This is a systematic, not random, so it adds in quadrature separately.
-
-        Parameters
-        ----------
-        photon_rate     : stellar photon rate [photons/s/bin], from stellar_photon_rate()
-        exposure_time_s : duration of one individual exposure [s]
-        n_exposures     : number of exposures to co-add
-
-        Returns
-        -------
-        dict with keys:
-          signal_e            : total collected signal [electrons]
-          shot_noise          : √(signal) [e⁻]
-          read_noise          : read noise contribution [e⁻]
-          dark_noise          : dark current contribution [e⁻]
-          sky_noise           : sky background contribution [e⁻]
-          stellar_floor_e     : systematic noise floor [e⁻]
-          total_random_noise  : quadrature sum of stochastic terms [e⁻]
-          total_noise         : total noise including systematic floor [e⁻]
-        """
+      
         total_time_s = exposure_time_s * n_exposures
         n_pix = self.config.n_pixels_per_resolution_element
 
@@ -409,47 +278,6 @@ class InstrumentModel:
 # ---------------------------------------------------------------------------
 
 def load_jwst_nirspec(floor_ppm: float = 10.0) -> InstrumentModel:
-    """
-    Load JWST NIRSpec Prism mode configuration.
-    Falls back to hardcoded defaults if config file not found.
-
-    Parameters
-    ----------
-    floor_ppm : float, default 10.0
-        Systematic stability floor to assume, in ppm. The default was
-        revised DOWN from an earlier pre-launch placeholder of 20 ppm
-        (Deming et al. 2009, PASP 121, 952; Greene et al. 2016, ApJ 817, 17)
-        after post-launch data showed that value was overly conservative:
-
-          - Rustamkulov et al. 2022 (ApJL 928, L7): lab-measured NIRSpec
-            PRISM time series, injection-recovery analysis -> 3-sigma
-            upper limit on the detector noise floor of 14 ppm, consistent
-            with <10 ppm at 1.7-sigma.
-          - Rustamkulov et al. 2023 (Nature 614, 659): real on-orbit ERS
-            observation of WASP-39b with NIRSpec PRISM -> precisions
-            "generally near the photon limit" with "minimal contributions
-            from systematics."
-
-        10 ppm matches the working value adopted by later simulation work
-        (e.g. arXiv:2303.15418) citing both results above. Pass floor_ppm=20
-        to reproduce the old pre-launch-conservative behavior, or floor_ppm=5
-        for the more optimistic value used by Fauchez et al. 2023
-        (arXiv:2310.01527, citing Lustig-Yaeger et al. 2023 on-orbit data).
-
-        CAVEAT: all of the above are measured on bright, photometrically
-        quiet host stars (WASP-39 is a G-dwarf). For M/K-dwarf HZ targets
-        -- the dominant regime in this pipeline's synthetic population --
-        the effective floor is likely set by the transit light source
-        effect (unocculted starspots/faculae), not detector systematics,
-        and can run to several hundred ppm peak-to-peak for active hosts
-        (see e.g. Lim et al. 2023 on TRAPPIST-1b NIRISS; the JWST-TST
-        DREAMS TRAPPIST-1e NIRSpec/PRISM paper, arXiv:2509.05414, reports
-        "significant levels of stellar contamination" even at these
-        wavelengths). This function models only the flat instrumental
-        floor -- it does not include stellar contamination -- so treat any
-        floor_ppm value here as a lower bound on the true noise budget for
-        active M-dwarf targets specifically.
-    """
     path = "config/instruments/jwst_nirspec.json"
     if os.path.exists(path):
         return InstrumentModel.from_json(path)
@@ -504,24 +332,6 @@ def load_elt_harmoni() -> InstrumentModel:
 
 
 def load_miri_lrs() -> InstrumentModel:
-    """
-    Load JWST MIRI Low Resolution Spectrometer (LRS) configuration.
-
-    Why MIRI matters for biosignatures:
-      MIRI LRS covers 5–14 μm — the mid-infrared regime where several
-      key biosignature and discriminator features live that NIRSpec cannot reach:
-        - CO2 bending mode at 15 μm (just beyond LRS; MIRI photometry can probe it)
-        - O3 at 9.6 μm (ozone; strongest mid-IR biosignature)
-        - N2O at 7.8 μm (nitrous oxide; produced by denitrifying bacteria)
-        - SO2 at 7.3 μm (volcanic; false-positive discriminator)
-        - H2O at 6.3 μm (another water detection window)
-
-    MIRI is ~100× less sensitive than NIRSpec per photon due to higher
-    thermal background in the mid-IR, so it requires many more transits.
-    Treat this as a stub for multi-instrument studies in Weeks 5–6.
-
-    Ref: Kendrew et al. (2015), PASP 127, 623; Wright et al. (2023), PASP 135, 048003.
-    """
     path = "config/instruments/miri_lrs.json"
     if os.path.exists(path):
         return InstrumentModel.from_json(path)
